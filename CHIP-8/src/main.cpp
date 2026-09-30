@@ -78,20 +78,30 @@ void handle_input(Chip8& chip8, bool& running){
 void draw_char(uint8_t* display, char c, int x, int y) {
     uint16_t bitmap = 0;
     switch(c) {
-        case 'T': bitmap = 072222; break;
-        case 'E': bitmap = 074747; break;
-        case 'R': bitmap = 075655; break;
-        case 'I': bitmap = 072227; break;
-        case 'S': bitmap = 074717; break;
-        case 'P': bitmap = 075744; break;
-        case 'O': bitmap = 075557; break;
-        case 'N': bitmap = 057555; break;
-        case 'G': bitmap = 074757; break;
+        case 'A': bitmap = 075755; break;
         case 'B': bitmap = 065656; break;
-        case 'L': bitmap = 044447; break;
+        case 'C': bitmap = 074447; break;
+        case 'D': bitmap = 065556; break;
+        case 'E': bitmap = 074747; break;
+        case 'G': bitmap = 074757; break;
+        case 'I': bitmap = 072227; break;
         case 'K': bitmap = 056465; break;
+        case 'L': bitmap = 044447; break;
+        case 'N': bitmap = 057555; break;
+        case 'O': bitmap = 075557; break;
+        case 'P': bitmap = 075744; break;
+        case 'Q': bitmap = 075571; break;
+        case 'R': bitmap = 075655; break;
+        case 'S': bitmap = 074717; break;
+        case 'T': bitmap = 072222; break;
+        case 'U': bitmap = 055557; break;
+        case 'W': bitmap = 055575; break;
         case 'Y': bitmap = 055222; break;
+        case '1': bitmap = 026227; break;
+        case '2': bitmap = 071747; break;
+        case '4': bitmap = 055711; break;
         case '>': bitmap = 042124; break;
+        case ':': bitmap = 002020; break;
         case ' ': bitmap = 000000; break;
     }
     for (int row=0; row<5; row++) {
@@ -114,13 +124,14 @@ void draw_text(uint8_t* display, const std::string& str, int x, int y) {
 std::string run_menu(SDL_Renderer* renderer) {
     std::vector<std::string> games = {"TETRIS", "PONG", "BLINKY"};
     std::vector<std::string> files = {"roms/Tetris.ch8", "roms/Pong.ch8", "roms/Blinky.ch8"};
+    std::vector<std::string> keys = {"KEYS: Q W E A", "KEYS: 1 Q 4 R", "KEYS: 2 Q S E"};
     int selection = 0;
     uint8_t menu_display[64*32];
     SDL_Event event;
     bool selecting = true;
     while(selecting){
         while(SDL_PollEvent(&event)){
-            if(event.type == SDL_QUIT) return "";
+            if(event.type == SDL_QUIT) return "QUIT";
             if(event.type == SDL_KEYDOWN){
                 if(event.key.keysym.sym == SDLK_UP) {
                     selection--;
@@ -134,27 +145,27 @@ std::string run_menu(SDL_Renderer* renderer) {
                     return files[selection];
                 }
                 else if(event.key.keysym.sym == SDLK_ESCAPE) {
-                    return "";
+                    return "QUIT";
                 }
             }
         }
         memset(menu_display, 0, sizeof(menu_display));
         for(size_t i=0; i<games.size(); i++){
             if((int)i == selection) {
-                draw_text(menu_display, ">", 10, 8 + i*8);
+                draw_text(menu_display, ">", 10, 4 + i*6);
             }
-            draw_text(menu_display, games[i], 16, 8 + i*8);
+            draw_text(menu_display, games[i], 16, 4 + i*6);
         }
+        // Draw the keys for the selected game at the bottom
+        draw_text(menu_display, keys[selection], 4, 25);
+
         draw_graphics(renderer, menu_display);
         SDL_Delay(16);
     }
-    return "";
+    return "QUIT";
 }
 
 int main(int argc, char** argv){
-    std::string rom_to_load = "";
-    if(argc >= 2) rom_to_load = argv[1];
-
     if(SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO) < 0){
         std::cerr << "SDL Error: " << SDL_GetError() << std::endl;
         return 1;
@@ -176,32 +187,42 @@ int main(int argc, char** argv){
     SDL_Window* window = SDL_CreateWindow("Chip-8 Emulator", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, WIDTH, HEIGHT, SDL_WINDOW_SHOWN);
     SDL_Renderer* renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
 
-    if(rom_to_load == "") rom_to_load = run_menu(renderer);
-
-    if(rom_to_load == "") {
-        if(audio_device != 0) SDL_CloseAudioDevice(audio_device);
-        SDL_DestroyRenderer(renderer);
-        SDL_DestroyWindow(window);
-        SDL_Quit();
-        return 0;
-    }
-
-    Chip8 chip8;
-    chip8.load_rom(rom_to_load);
-    
-    bool running = true;
-    while(running){
-        handle_input(chip8, running);
-        for(int i=0; i<10; i++){
-            chip8.emulate_cycle();
+    bool app_running = true;
+    while(app_running) {
+        std::string rom_to_load = "";
+        if(argc >= 2) rom_to_load = argv[1];
+        
+        if(rom_to_load == "") {
+            rom_to_load = run_menu(renderer);
         }
-        chip8.update_timers();
-        beeping = (chip8.get_sound_timer() > 0);
 
-        draw_graphics(renderer, chip8.display);
-        chip8.draw_flag = false;
-        SDL_Delay(16); // ~60 FPS
+        if(rom_to_load == "QUIT" || rom_to_load == "") {
+            app_running = false;
+            break;
+        }
+
+        Chip8 chip8;
+        chip8.load_rom(rom_to_load);
+        
+        bool running = true;
+        while(running){
+            handle_input(chip8, running);
+            for(int i=0; i<10; i++){
+                chip8.emulate_cycle();
+            }
+            chip8.update_timers();
+            beeping = (chip8.get_sound_timer() > 0);
+
+            draw_graphics(renderer, chip8.display);
+            chip8.draw_flag = false;
+            SDL_Delay(16); // ~60 FPS
+        }
+        // If a ROM was provided via CLI, quit after it finishes
+        if(argc >= 2) {
+            app_running = false;
+        }
     }
+
     if(audio_device != 0) SDL_CloseAudioDevice(audio_device);
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);
