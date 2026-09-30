@@ -11,6 +11,8 @@
 #include <SDL2/SDL_video.h>
 #include <cstdint>
 #include <iostream>
+#include <string>
+#include <vector>
 
 const int SCALE = 10; // Each pixel is 10x10 screen pixels
 const int WIDTH = 64*SCALE;
@@ -18,52 +20,35 @@ const int HEIGHT = 32*SCALE;
 
 // Keyboard mapping
 SDL_Keycode keymap[16] = {
-    SDLK_x, // 0
-    SDLK_1, // 1
-    SDLK_2, // 2
-    SDLK_3, // 3
-    SDLK_q, // 4
-    SDLK_w, // 5
-    SDLK_e, // 6
-    SDLK_a, // 7
-    SDLK_s, // 8
-    SDLK_d, // 9
-    SDLK_z, // A
-    SDLK_c, // B
-    SDLK_4, // C
-    SDLK_r, // D
-    SDLK_f, // E
-    SDLK_v  // F
+    SDLK_x, SDLK_1, SDLK_2, SDLK_3,
+    SDLK_q, SDLK_w, SDLK_e, SDLK_a,
+    SDLK_s, SDLK_d, SDLK_z, SDLK_c,
+    SDLK_4, SDLK_r, SDLK_f, SDLK_v
 };
 
 void audio_callback(void* userdata, uint8_t* stream, int len){
     static uint32_t sample_index = 0;
     int16_t* audio_buffer = (int16_t*) stream;
     int samples = len/2;
-
     bool* beeping = (bool*) userdata;
     for(int i=0; i<samples; i++){
         if(*beeping){
-            // Generating 440Hz square wave
             int16_t value = ((sample_index++ / 50) % 2) ? 3000 : -3000;
             audio_buffer[i] = value;
-        }
-        else{
-            audio_buffer[i] = 0; // Silence
+        }else{
+            audio_buffer[i] = 0;
             sample_index = 0;
         }
     }
 }
 
-void draw_graphics(SDL_Renderer* renderer, Chip8& chip8){
-    // Clear screen
+void draw_graphics(SDL_Renderer* renderer, const uint8_t* display){
     SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
     SDL_RenderClear(renderer);
-    // Drawing white pixels
     SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
     for(int y=0; y<32; y++){
         for(int x=0; x<64; x++){
-            if(chip8.display[x + (y*64)] == 1){
+            if(display[x + (y*64)] == 1){
                 SDL_Rect rect = {x*SCALE, y*SCALE, SCALE, SCALE};
                 SDL_RenderFillRect(renderer, &rect);
             }
@@ -74,12 +59,10 @@ void draw_graphics(SDL_Renderer* renderer, Chip8& chip8){
 
 void handle_input(Chip8& chip8, bool& running){
     SDL_Event event;
-
     while(SDL_PollEvent(&event)){
         if(event.type == SDL_QUIT) running = false;
         if(event.type == SDL_KEYDOWN){
             if(event.key.keysym.sym == SDLK_ESCAPE) running = false;
-            // Check which Chip-8 key was pressed
             for(int i=0; i<16; i++){
                 if(event.key.keysym.sym == keymap[i]) chip8.key[i] = 1;
             }
@@ -92,16 +75,90 @@ void handle_input(Chip8& chip8, bool& running){
     }
 }
 
-int main(int argc, char** argv){
-    if(argc < 2){
-        std::cerr << "Usage: " << argv[0] << " <ROM file>" << std::endl;
-        return 1;
+void draw_char(uint8_t* display, char c, int x, int y) {
+    uint16_t bitmap = 0;
+    switch(c) {
+        case 'T': bitmap = 072222; break;
+        case 'E': bitmap = 074747; break;
+        case 'R': bitmap = 075655; break;
+        case 'I': bitmap = 072227; break;
+        case 'S': bitmap = 074717; break;
+        case 'P': bitmap = 075744; break;
+        case 'O': bitmap = 075557; break;
+        case 'N': bitmap = 057555; break;
+        case 'G': bitmap = 074757; break;
+        case 'B': bitmap = 065656; break;
+        case 'L': bitmap = 044447; break;
+        case 'K': bitmap = 056465; break;
+        case 'Y': bitmap = 055222; break;
+        case '>': bitmap = 042124; break;
+        case ' ': bitmap = 000000; break;
     }
+    for (int row=0; row<5; row++) {
+        int r_bits = (bitmap >> (12 - row*3)) & 7;
+        for (int col=0; col<3; col++) {
+            if (r_bits & (4 >> col)) {
+                if (x+col < 64 && y+row < 32)
+                    display[(x+col) + (y+row)*64] = 1;
+            }
+        }
+    }
+}
+
+void draw_text(uint8_t* display, const std::string& str, int x, int y) {
+    for(size_t i=0; i<str.length(); i++){
+        draw_char(display, str[i], x + i*4, y);
+    }
+}
+
+std::string run_menu(SDL_Renderer* renderer) {
+    std::vector<std::string> games = {"TETRIS", "PONG", "BLINKY"};
+    std::vector<std::string> files = {"roms/Tetris.ch8", "roms/Pong.ch8", "roms/Blinky.ch8"};
+    int selection = 0;
+    uint8_t menu_display[64*32];
+    SDL_Event event;
+    bool selecting = true;
+    while(selecting){
+        while(SDL_PollEvent(&event)){
+            if(event.type == SDL_QUIT) return "";
+            if(event.type == SDL_KEYDOWN){
+                if(event.key.keysym.sym == SDLK_UP) {
+                    selection--;
+                    if(selection < 0) selection = games.size() - 1;
+                }
+                else if(event.key.keysym.sym == SDLK_DOWN) {
+                    selection++;
+                    if(selection >= (int)games.size()) selection = 0;
+                }
+                else if(event.key.keysym.sym == SDLK_RETURN || event.key.keysym.sym == SDLK_SPACE) {
+                    return files[selection];
+                }
+                else if(event.key.keysym.sym == SDLK_ESCAPE) {
+                    return "";
+                }
+            }
+        }
+        memset(menu_display, 0, sizeof(menu_display));
+        for(size_t i=0; i<games.size(); i++){
+            if((int)i == selection) {
+                draw_text(menu_display, ">", 10, 8 + i*8);
+            }
+            draw_text(menu_display, games[i], 16, 8 + i*8);
+        }
+        draw_graphics(renderer, menu_display);
+        SDL_Delay(16);
+    }
+    return "";
+}
+
+int main(int argc, char** argv){
+    std::string rom_to_load = "";
+    if(argc >= 2) rom_to_load = argv[1];
+
     if(SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO) < 0){
         std::cerr << "SDL Error: " << SDL_GetError() << std::endl;
         return 1;
     }
-    // Audio setup
     bool beeping = false;
     SDL_AudioSpec want, have;
     SDL_zero(want);
@@ -117,21 +174,20 @@ int main(int argc, char** argv){
     else SDL_PauseAudioDevice(audio_device, 0);
 
     SDL_Window* window = SDL_CreateWindow("Chip-8 Emulator", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, WIDTH, HEIGHT, SDL_WINDOW_SHOWN);
-    if(!window){
-        std::cerr << "Window error: " << SDL_GetError() << std::endl;
-        SDL_Quit();
-        return 1;
-    }
     SDL_Renderer* renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
-    if(!renderer){
-        std::cerr << "Renderer error: " << SDL_GetError() << std::endl;
+
+    if(rom_to_load == "") rom_to_load = run_menu(renderer);
+
+    if(rom_to_load == "") {
+        if(audio_device != 0) SDL_CloseAudioDevice(audio_device);
+        SDL_DestroyRenderer(renderer);
         SDL_DestroyWindow(window);
         SDL_Quit();
-        return 1;
+        return 0;
     }
 
     Chip8 chip8;
-    chip8.load_rom(argv[1]);
+    chip8.load_rom(rom_to_load);
     
     bool running = true;
     while(running){
@@ -139,19 +195,16 @@ int main(int argc, char** argv){
         for(int i=0; i<10; i++){
             chip8.emulate_cycle();
         }
-
         chip8.update_timers();
         beeping = (chip8.get_sound_timer() > 0);
 
-        draw_graphics(renderer, chip8);
+        draw_graphics(renderer, chip8.display);
         chip8.draw_flag = false;
-
         SDL_Delay(16); // ~60 FPS
     }
     if(audio_device != 0) SDL_CloseAudioDevice(audio_device);
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);
     SDL_Quit();
-
     return 0;
 }
