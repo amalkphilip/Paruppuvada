@@ -84,6 +84,7 @@ void draw_graphics(SDL_Renderer* renderer, const uint8_t* display){
 
 int cycles_per_frame = 12;
 std::string current_rom_path = "";
+Chip8 chip8;
 bool app_running = true;
 
 void enforce_60fps(Uint64 frame_start) {
@@ -109,6 +110,8 @@ void handle_global_ui_keyboard(const SDL_Event& event, RetroComputerUI& ui) {
         if (event.key.keysym.sym == SDLK_LEFT) ui.setVirtualKeyPressed(retro_gui::VirtualKey::ARROW_LEFT, pressed);
         if (event.key.keysym.sym == SDLK_RIGHT) ui.setVirtualKeyPressed(retro_gui::VirtualKey::ARROW_RIGHT, pressed);
         if (event.key.keysym.sym == SDLK_SPACE) ui.setVirtualKeyPressed(retro_gui::VirtualKey::SPACE, pressed);
+        if (event.key.keysym.sym == SDLK_s) ui.setVirtualKeyPressed(retro_gui::VirtualKey::SAVE, pressed);
+        if (event.key.keysym.sym == SDLK_l) ui.setVirtualKeyPressed(retro_gui::VirtualKey::LOAD, pressed);
         
         if (pressed) {
             if (event.key.keysym.sym == SDLK_PLUS || event.key.keysym.sym == SDLK_KP_PLUS || event.key.keysym.sym == SDLK_EQUALS) {
@@ -301,7 +304,106 @@ std::string run_menu(SDL_Renderer* renderer, RetroComputerUI& ui, SDL_Texture* c
     return "QUIT";
 }
 
+std::string show_slots_menu(SDL_Renderer* renderer, RetroComputerUI& ui, SDL_Texture* crt_tex, const std::string& current_rom_path, bool is_save) {
+    std::string base_name = current_rom_path;
+    size_t slash = base_name.find_last_of("/\\");
+    if(slash != std::string::npos) base_name = base_name.substr(slash + 1);
+    
+    std::string title = is_save ? "SAVE GAME: " : "LOAD GAME: ";
+    title += base_name;
+    std::transform(title.begin(), title.end(), title.begin(), ::toupper);
+
+        std::string saves_dir = "saves/" + base_name;
+    if (!std::filesystem::exists(saves_dir)) {
+        std::filesystem::create_directories(saves_dir);
+    }
+    
+    std::vector<std::string> slots(5);
+    std::vector<std::string> slot_paths(5);
+    for (int i=1; i<=5; i++) {
+        std::string slot_file = saves_dir + "/slot" + std::to_string(i) + ".sav";
+        slot_paths[i-1] = slot_file;
+        if (fs::exists(slot_file)) {
+            slots[i-1] = "SLOT " + std::to_string(i) + " (DATA EXISTS)";
+        } else {
+            slots[i-1] = "SLOT " + std::to_string(i) + " (EMPTY)";
+        }
+    }
+
+    int selection = 0;
+    
+    SDL_Event event;
+    while(true){
+        Uint64 frame_start = SDL_GetPerformanceCounter();
+        while(SDL_PollEvent(&event)){
+            if(event.type == SDL_QUIT) { app_running = false; return "QUIT"; }
+            ui.handleEvent(event);
+            handle_global_ui_keyboard(event, ui);
+            if(event.type == SDL_WINDOWEVENT) {
+                if (event.window.event == SDL_WINDOWEVENT_RESIZED || event.window.event == SDL_WINDOWEVENT_SIZE_CHANGED) {
+                    ui.onWindowResize(event.window.data1, event.window.data2);
+                }
+            }
+            if(event.type == SDL_KEYDOWN){
+                if(event.key.keysym.sym == SDLK_ESCAPE || (!is_save && event.key.keysym.sym == SDLK_l) || (is_save && event.key.keysym.sym == SDLK_s)) {
+                    return "BACK";
+                }
+                if(event.key.keysym.sym == SDLK_UP || event.key.keysym.sym == SDLK_w) {
+                    selection--;
+                    if(selection < 0) selection = 4;
+                }
+                if(event.key.keysym.sym == SDLK_DOWN || (!is_save && event.key.keysym.sym == SDLK_s)) {
+                    selection++;
+                    if(selection > 4) selection = 0;
+                }
+                if(event.key.keysym.sym == SDLK_RETURN || event.key.keysym.sym == SDLK_SPACE) {
+                    return slot_paths[selection];
+                }
+            }
+        }
+        
+        SDL_SetRenderTarget(renderer, crt_tex);
+        SDL_SetRenderDrawColor(renderer, bg_r, bg_g, bg_b, 255);
+        SDL_RenderClear(renderer);
+        SDL_SetRenderDrawColor(renderer, fg_r, fg_g, fg_b, 255);
+        
+        SDL_Rect border = { 30, 20, CRT_WIDTH - 60, CRT_HEIGHT - 40 };
+        SDL_RenderDrawRect(renderer, &border);
+        border.x += 2; border.y += 2; border.w -= 4; border.h -= 4;
+        SDL_RenderDrawRect(renderer, &border);
+        
+        retro_gui::drawPixelText(renderer, "ESC: CANCEL", CRT_WIDTH - 160, 30, 2);
+        
+        retro_gui::drawPixelText(renderer, title.c_str(), 
+                                CRT_WIDTH/2 - retro_gui::pixelTextWidth(title.c_str(), 3)/2, 60, 3);
+        
+        int start_y = 120;
+        for (int i=0; i<5; i++) {
+            if (i == selection) {
+                retro_gui::drawPixelText(renderer, ">", 60, start_y + i*25, 2);
+            }
+            retro_gui::drawPixelText(renderer, slots[i].c_str(), 90, start_y + i*25, 2);
+        }
+        
+        retro_gui::drawPixelText(renderer, "PRESS ENTER TO SELECT", CRT_WIDTH/2 - retro_gui::pixelTextWidth("PRESS ENTER TO SELECT", 2)/2, 260, 2);
+
+        SDL_SetRenderTarget(renderer, nullptr);
+
+        ui.beginFrame();
+        ui.renderContent(crt_tex);
+        ui.endFrame();
+        
+        SDL_RenderPresent(renderer);
+        
+        enforce_60fps(frame_start);
+    }
+    return "BACK";
+}
+
+bool in_popup_menu = false;
+
 bool show_popup(SDL_Renderer* renderer, const std::string& rom_name, RetroComputerUI& ui, SDL_Texture* crt_tex) {
+    in_popup_menu = true;
     SDL_Event event;
     std::string base_name = rom_name;
     size_t slash = base_name.find_last_of("/\\");
@@ -311,7 +413,7 @@ bool show_popup(SDL_Renderer* renderer, const std::string& rom_name, RetroComput
     while(true){
         Uint64 frame_start = SDL_GetPerformanceCounter();
         while(SDL_PollEvent(&event)){
-            if(event.type == SDL_QUIT) { app_running = false; return false; }
+            if(event.type == SDL_QUIT) { app_running = false; in_popup_menu = false; return false; }
             ui.handleEvent(event);
             handle_global_ui_keyboard(event, ui);
             if(event.type == SDL_WINDOWEVENT) {
@@ -329,6 +431,22 @@ bool show_popup(SDL_Renderer* renderer, const std::string& rom_name, RetroComput
                 }
                 if(event.key.keysym.sym == SDLK_RETURN || event.key.keysym.sym == SDLK_SPACE) {
                     return true;
+                }
+                if(event.key.keysym.sym == SDLK_l) {
+                    std::string load_res = show_slots_menu(renderer, ui, crt_tex, current_rom_path, false);
+                    if (load_res != "BACK" && load_res != "QUIT") {
+                        extern Chip8 chip8;
+                        chip8.load_state(load_res);
+                        return true;
+                    }
+                }
+                if(event.key.keysym.sym == SDLK_l) {
+                    std::string load_res = show_slots_menu(renderer, ui, crt_tex, current_rom_path, false);
+                    if (load_res != "BACK" && load_res != "QUIT") {
+                        extern Chip8 chip8;
+                        chip8.load_state(load_res);
+                        return true;
+                    }
                 }
             }
         }
@@ -370,6 +488,8 @@ bool show_popup(SDL_Renderer* renderer, const std::string& rom_name, RetroComput
         retro_gui::drawPixelText(renderer, "R: RESTART GAME AT ANY TIME", CRT_WIDTH/2 - retro_gui::pixelTextWidth("R: RESTART GAME AT ANY TIME", 2)/2, 215, 2);
         retro_gui::drawPixelText(renderer, "SPEED: [+] FASTER   [-] SLOWER", CRT_WIDTH/2 - retro_gui::pixelTextWidth("SPEED: [+] FASTER   [-] SLOWER", 2)/2, 240, 2);
         retro_gui::drawPixelText(renderer, "PRESS ENTER OR SPACE TO START", CRT_WIDTH/2 - retro_gui::pixelTextWidth("PRESS ENTER OR SPACE TO START", 2)/2, 270, 2);
+
+        retro_gui::drawPixelText(renderer, "L: LOAD SAVED GAME", CRT_WIDTH/2 - retro_gui::pixelTextWidth("L: LOAD SAVED GAME", 2)/2, 230, 2);
 
         SDL_SetRenderTarget(renderer, nullptr);
 
@@ -466,9 +586,7 @@ int main(int argc, char** argv){
     
     SDL_Texture* crt_tex = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_TARGET, CRT_WIDTH, CRT_HEIGHT);
 
-    Chip8 chip8;
-
-    ui.setOnVirtualKeyPressed([&chip8](VirtualKey key, bool pressed) {
+    ui.setOnVirtualKeyPressed([](VirtualKey key, bool pressed) {
         int hex = retro_gui::virtualKeyToChip8Hex(key);
         if (hex >= 0) {
             chip8.key[hex] = pressed ? 1 : 0;
@@ -485,7 +603,7 @@ int main(int argc, char** argv){
         }
     });
 
-    ui.setOnVirtualKeyReleased([&chip8](VirtualKey key, bool pressed) {
+    ui.setOnVirtualKeyReleased([](VirtualKey key, bool pressed) {
         int hex = retro_gui::virtualKeyToChip8Hex(key);
         if (hex >= 0) {
             chip8.key[hex] = pressed ? 1 : 0;
@@ -523,16 +641,24 @@ int main(int argc, char** argv){
         }
     });
 
-    ui.setOnSaveStateRequested([&chip8]() {
-        if (current_rom_path != "") {
-            chip8.save_state(current_rom_path + ".sav");
-            std::cout << "Saved state to " << current_rom_path << ".sav" << std::endl;
+        ui.setOnSaveStateRequested([renderer, crt_tex, &ui]() {
+        extern bool in_popup_menu;
+        if (current_rom_path != "" && !chip8.is_game_over() && !in_popup_menu) {
+            std::string save_res = show_slots_menu(renderer, ui, crt_tex, current_rom_path, true);
+            if (save_res != "BACK" && save_res != "QUIT") {
+                chip8.save_state(save_res);
+            }
         }
     });
 
-    ui.setOnLoadStateRequested([&chip8]() {
-        // Just dummy logic for now to allow external load menu to trigger
-        // Actual loading is handled globally or via load menu if available
+        ui.setOnLoadStateRequested([renderer, crt_tex, &ui]() {
+        extern bool in_popup_menu;
+        if (current_rom_path != "" && (chip8.is_game_over() || in_popup_menu)) {
+            std::string load_res = show_slots_menu(renderer, ui, crt_tex, current_rom_path, false);
+            if (load_res != "BACK" && load_res != "QUIT") {
+                chip8.load_state(load_res);
+            }
+        }
     });
 
     while(app_running) {
@@ -735,3 +861,15 @@ int main(int argc, char** argv){
     SDL_Quit();
     return 0;
 }
+
+
+
+
+
+
+
+
+
+
+
+
