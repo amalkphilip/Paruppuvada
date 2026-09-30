@@ -75,7 +75,7 @@ void handle_input(Chip8& chip8, bool& running){
     }
 }
 
-void draw_char(uint8_t* display, char c, int x, int y) {
+void draw_char_hr(SDL_Renderer* renderer, char c, int x, int y, int scale) {
     uint16_t bitmap = 0;
     switch(c) {
         case 'A': bitmap = 075755; break;
@@ -83,11 +83,15 @@ void draw_char(uint8_t* display, char c, int x, int y) {
         case 'C': bitmap = 074447; break;
         case 'D': bitmap = 065556; break;
         case 'E': bitmap = 074747; break;
+        case 'F': bitmap = 074744; break;
         case 'G': bitmap = 074757; break;
+        case 'H': bitmap = 055755; break;
         case 'I': bitmap = 072227; break;
-        case 'K': bitmap = 056465; break;
+        case 'J': bitmap = 011157; break;
+        case 'K': bitmap = 055655; break;
         case 'L': bitmap = 044447; break;
-        case 'N': bitmap = 057555; break;
+        case 'M': bitmap = 057555; break;
+        case 'N': bitmap = 065555; break;
         case 'O': bitmap = 075557; break;
         case 'P': bitmap = 075744; break;
         case 'Q': bitmap = 075571; break;
@@ -95,38 +99,49 @@ void draw_char(uint8_t* display, char c, int x, int y) {
         case 'S': bitmap = 074717; break;
         case 'T': bitmap = 072222; break;
         case 'U': bitmap = 055557; break;
+        case 'V': bitmap = 055552; break;
         case 'W': bitmap = 055575; break;
+        case 'X': bitmap = 055255; break;
         case 'Y': bitmap = 055222; break;
+        case 'Z': bitmap = 071247; break;
+        case '0': bitmap = 075557; break;
         case '1': bitmap = 026227; break;
         case '2': bitmap = 071747; break;
+        case '3': bitmap = 071717; break;
         case '4': bitmap = 055711; break;
+        case '5': bitmap = 074717; break;
+        case '6': bitmap = 074757; break;
+        case '7': bitmap = 071111; break;
+        case '8': bitmap = 075757; break;
+        case '9': bitmap = 075717; break;
         case '>': bitmap = 042124; break;
         case ':': bitmap = 002020; break;
+        case '-': bitmap = 000700; break;
+        case '[': bitmap = 064446; break;
+        case ']': bitmap = 031113; break;
         case ' ': bitmap = 000000; break;
     }
     for (int row=0; row<5; row++) {
         int r_bits = (bitmap >> (12 - row*3)) & 7;
         for (int col=0; col<3; col++) {
             if (r_bits & (4 >> col)) {
-                if (x+col < 64 && y+row < 32)
-                    display[(x+col) + (y+row)*64] = 1;
+                SDL_Rect rect = {x + col*scale, y + row*scale, scale, scale};
+                SDL_RenderFillRect(renderer, &rect);
             }
         }
     }
 }
 
-void draw_text(uint8_t* display, const std::string& str, int x, int y) {
+void draw_text_hr(SDL_Renderer* renderer, const std::string& str, int x, int y, int scale = 2) {
     for(size_t i=0; i<str.length(); i++){
-        draw_char(display, str[i], x + i*4, y);
+        draw_char_hr(renderer, str[i], x + i*(4*scale), y, scale);
     }
 }
 
 std::string run_menu(SDL_Renderer* renderer) {
     std::vector<std::string> games = {"TETRIS", "PONG", "BLINKY"};
     std::vector<std::string> files = {"roms/Tetris.ch8", "roms/Pong.ch8", "roms/Blinky.ch8"};
-    std::vector<std::string> keys = {"KEYS: Q W E A", "KEYS: 1 Q 4 R", "KEYS: 2 Q S E"};
     int selection = 0;
-    uint8_t menu_display[64*32];
     SDL_Event event;
     bool selecting = true;
     while(selecting){
@@ -149,20 +164,77 @@ std::string run_menu(SDL_Renderer* renderer) {
                 }
             }
         }
-        memset(menu_display, 0, sizeof(menu_display));
+        
+        SDL_SetRenderDrawColor(renderer, 10, 10, 30, 255); // Dark blue background
+        SDL_RenderClear(renderer);
+        
+        SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255); // White text
+        draw_text_hr(renderer, "SELECT A GAME", WIDTH/2 - (13*16)/2, 40, 4);
+        
         for(size_t i=0; i<games.size(); i++){
             if((int)i == selection) {
-                draw_text(menu_display, ">", 10, 4 + i*6);
+                draw_text_hr(renderer, ">", 150, 120 + i*40, 3);
             }
-            draw_text(menu_display, games[i], 16, 4 + i*6);
+            draw_text_hr(renderer, games[i], 200, 120 + i*40, 3);
         }
-        // Draw the keys for the selected game at the bottom
-        draw_text(menu_display, keys[selection], 4, 25);
+        
+        draw_text_hr(renderer, "PRESS ENTER TO START", WIDTH/2 - (20*8)/2, 280, 2);
 
-        draw_graphics(renderer, menu_display);
+        SDL_RenderPresent(renderer);
         SDL_Delay(16);
     }
     return "QUIT";
+}
+
+bool show_popup(SDL_Renderer* renderer, const std::string& rom_name) {
+    SDL_Event event;
+    bool in_popup = true;
+    while(in_popup){
+        while(SDL_PollEvent(&event)){
+            if(event.type == SDL_QUIT) return false;
+            if(event.type == SDL_KEYDOWN){
+                if(event.key.keysym.sym == SDLK_ESCAPE || event.key.keysym.sym == SDLK_RETURN || event.key.keysym.sym == SDLK_SPACE) {
+                    return true;
+                }
+            }
+        }
+        
+        SDL_SetRenderDrawColor(renderer, 20, 20, 20, 255); // Dark grey background
+        SDL_RenderClear(renderer);
+        
+        SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+        
+        // Draw popup border box
+        SDL_Rect border = { 50, 30, WIDTH - 100, HEIGHT - 60 };
+        SDL_RenderDrawRect(renderer, &border);
+        border.x += 2; border.y += 2; border.w -= 4; border.h -= 4;
+        SDL_RenderDrawRect(renderer, &border);
+        
+        draw_text_hr(renderer, "[X] ESC TO CLOSE", WIDTH - 200, 40, 2);
+        
+        if (rom_name == "roms/Tetris.ch8") {
+            draw_text_hr(renderer, "- TETRIS CONTROLS -", WIDTH/2 - (19*12)/2, 70, 3);
+            draw_text_hr(renderer, "W   ROTATE", 150, 140, 3);
+            draw_text_hr(renderer, "A   LEFT", 150, 180, 3);
+            draw_text_hr(renderer, "D   RIGHT", 350, 140, 3);
+            draw_text_hr(renderer, "S   DROP", 350, 180, 3);
+        } else if (rom_name == "roms/Pong.ch8") {
+            draw_text_hr(renderer, "- PONG CONTROLS -", WIDTH/2 - (17*12)/2, 70, 3);
+            draw_text_hr(renderer, "PLAYER 1:", 100, 130, 3);
+            draw_text_hr(renderer, "UP   DOWN", 100, 170, 2);
+            draw_text_hr(renderer, "ARROW KEYS", 100, 200, 2);
+            draw_text_hr(renderer, "PLAYER 2:", 350, 130, 3);
+            draw_text_hr(renderer, "NUM8 NUM2", 350, 170, 2);
+        } else if (rom_name == "roms/Blinky.ch8") {
+            draw_text_hr(renderer, "- BLINKY CONTROLS -", WIDTH/2 - (19*12)/2, 70, 3);
+            draw_text_hr(renderer, "USE THE", 200, 140, 4);
+            draw_text_hr(renderer, "ARROW KEYS", 200, 200, 4);
+        }
+        
+        SDL_RenderPresent(renderer);
+        SDL_Delay(16);
+    }
+    return false;
 }
 
 int main(int argc, char** argv){
@@ -199,6 +271,35 @@ int main(int argc, char** argv){
         if(rom_to_load == "QUIT" || rom_to_load == "") {
             app_running = false;
             break;
+        }
+
+        // Show the popup controls screen
+        if (!show_popup(renderer, rom_to_load)) {
+            app_running = false;
+            break; // User completely exited the app from popup
+        }
+
+        // Set dynamic keymap based on ROM
+        keymap[0] = SDLK_x; keymap[1] = SDLK_1; keymap[2] = SDLK_2; keymap[3] = SDLK_3;
+        keymap[4] = SDLK_q; keymap[5] = SDLK_w; keymap[6] = SDLK_e; keymap[7] = SDLK_a;
+        keymap[8] = SDLK_s; keymap[9] = SDLK_d; keymap[10] = SDLK_z; keymap[11] = SDLK_c;
+        keymap[12] = SDLK_4; keymap[13] = SDLK_r; keymap[14] = SDLK_f; keymap[15] = SDLK_v;
+
+        if (rom_to_load == "roms/Tetris.ch8") {
+            keymap[5] = SDLK_w; // Rotate
+            keymap[4] = SDLK_a; // Left
+            keymap[6] = SDLK_d; // Right
+            keymap[7] = SDLK_s; // Drop
+        } else if (rom_to_load == "roms/Pong.ch8") {
+            keymap[1] = SDLK_UP;     // P1 Up
+            keymap[4] = SDLK_DOWN;   // P1 Down
+            keymap[0xC] = SDLK_KP_8; // P2 Up (CHIP-8 Key C)
+            keymap[0xD] = SDLK_KP_2; // P2 Down (CHIP-8 Key D)
+        } else if (rom_to_load == "roms/Blinky.ch8") {
+            keymap[3] = SDLK_UP;
+            keymap[6] = SDLK_DOWN;
+            keymap[7] = SDLK_LEFT;
+            keymap[8] = SDLK_RIGHT;
         }
 
         Chip8 chip8;
