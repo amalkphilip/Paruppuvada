@@ -52,35 +52,7 @@ void audio_callback(void* userdata, uint8_t* stream, int len){
     }
 }
 
-// Minimal 3x5 font for simple text rendering
-const uint16_t tiny_font[128] = {
-    0x0000,0x0000,0x0000,0x0000,0x0000,0x0000,0x0000,0x0000,0x0000,0x0000,0x0000,0x0000,0x0000,0x0000,0x0000,0x0000,
-    0x0000,0x0000,0x0000,0x0000,0x0000,0x0000,0x0000,0x0000,0x0000,0x0000,0x0000,0x0000,0x0000,0x0000,0x0000,0x0000,
-    0x0000,0x2092,0x5200,0x72f2,0x2722,0x4210,0x25a5,0x2000,0x2222,0x4444,0x0525,0x0272,0x0024,0x0070,0x0002,0x1248,
-    0x7557,0x2222,0x7174,0x7171,0x5571,0x7471,0x7477,0x7111,0x7777,0x7771,0x0202,0x0204,0x1242,0x0707,0x4212,0x7120,
-    0x2552,0x2575,0x7577,0x3443,0x6556,0x7464,0x7464,0x3453,0x5575,0x7222,0x3113,0x5645,0x4447,0x5755,0x5755,0x2552,
-    0x7574,0x2553,0x7565,0x3436,0x7222,0x5552,0x5522,0x5555,0x5225,0x5522,0x7127,0x6226,0x4210,0x3443,0x0200,0x0007,
-    0x2000,0x2575,0x7577,0x3443,0x6556,0x7464,0x7464,0x3453,0x5575,0x7222,0x3113,0x5645,0x4447,0x5755,0x5755,0x2552,
-    0x7574,0x2553,0x7565,0x3436,0x7222,0x5552,0x5522,0x5555,0x5225,0x5522,0x7127,0x3223,0x2222,0x6446,0x0000,0x0000
-};
 
-void drawText(SDL_Renderer* renderer, const std::string& text, int x, int y, int scale) {
-    int cur_x = x;
-    for(char c : text){
-        if(c >= 0 && c < 128){
-            uint16_t glyph = tiny_font[(int)c];
-            for(int row=0; row<5; row++){
-                for(int col=0; col<3; col++){
-                    if(glyph & (1 << (14 - (row*3 + col)))){
-                        SDL_Rect r = { cur_x + col*scale, y + row*scale, scale, scale };
-                        SDL_RenderFillRect(renderer, &r);
-                    }
-                }
-            }
-        }
-        cur_x += 4 * scale;
-    }
-}
 
 uint8_t fg_r = 0x8F, fg_g = 0xEA, fg_b = 0x9B;
 uint8_t bg_r = 0x0B, bg_g = 0x1F, bg_b = 0x10;
@@ -114,6 +86,41 @@ int cycles_per_frame = 12;
 std::string current_rom_path = "";
 bool app_running = true;
 
+void enforce_60fps(Uint64 frame_start) {
+    Uint64 frame_end = SDL_GetPerformanceCounter();
+    double elapsed = (double)(frame_end - frame_start);
+    double frame_duration = (double)SDL_GetPerformanceFrequency() / 60.0;
+    if (elapsed < frame_duration) {
+        double delay_ms = (frame_duration - elapsed) * 1000.0 / (double)SDL_GetPerformanceFrequency();
+        SDL_Delay((Uint32)delay_ms);
+    }
+}
+
+void handle_global_ui_keyboard(const SDL_Event& event, RetroComputerUI& ui) {
+    if (event.type == SDL_KEYDOWN || event.type == SDL_KEYUP) {
+        bool pressed = (event.type == SDL_KEYDOWN);
+        for (int i = 0; i < 16; i++) {
+            if (event.key.keysym.sym == keymap[i]) {
+                ui.setVirtualKeyPressed(i, pressed);
+            }
+        }
+        if (event.key.keysym.sym == SDLK_UP) ui.setVirtualKeyPressed(retro_gui::VirtualKey::ARROW_UP, pressed);
+        if (event.key.keysym.sym == SDLK_DOWN) ui.setVirtualKeyPressed(retro_gui::VirtualKey::ARROW_DOWN, pressed);
+        if (event.key.keysym.sym == SDLK_LEFT) ui.setVirtualKeyPressed(retro_gui::VirtualKey::ARROW_LEFT, pressed);
+        if (event.key.keysym.sym == SDLK_RIGHT) ui.setVirtualKeyPressed(retro_gui::VirtualKey::ARROW_RIGHT, pressed);
+        if (event.key.keysym.sym == SDLK_SPACE) ui.setVirtualKeyPressed(retro_gui::VirtualKey::SPACE, pressed);
+        
+        if (pressed) {
+            if (event.key.keysym.sym == SDLK_PLUS || event.key.keysym.sym == SDLK_KP_PLUS || event.key.keysym.sym == SDLK_EQUALS) {
+                ui.setSpeedIndex(ui.getSpeedIndex() + 1);
+            }
+            if (event.key.keysym.sym == SDLK_MINUS || event.key.keysym.sym == SDLK_KP_MINUS) {
+                ui.setSpeedIndex(ui.getSpeedIndex() - 1);
+            }
+        }
+    }
+}
+
 std::string show_load_menu(SDL_Renderer* renderer, RetroComputerUI& ui, SDL_Texture* crt_tex) {
     std::vector<std::string> games;
     std::vector<std::string> files;
@@ -143,9 +150,11 @@ std::string show_load_menu(SDL_Renderer* renderer, RetroComputerUI& ui, SDL_Text
     
     SDL_Event event;
     while(true){
+        Uint64 frame_start = SDL_GetPerformanceCounter();
         while(SDL_PollEvent(&event)){
             if(event.type == SDL_QUIT) { app_running = false; return "QUIT"; }
             ui.handleEvent(event);
+            handle_global_ui_keyboard(event, ui);
             if(event.type == SDL_WINDOWEVENT) {
                 if (event.window.event == SDL_WINDOWEVENT_RESIZED || event.window.event == SDL_WINDOWEVENT_SIZE_CHANGED) {
                     ui.onWindowResize(event.window.data1, event.window.data2);
@@ -181,15 +190,15 @@ std::string show_load_menu(SDL_Renderer* renderer, RetroComputerUI& ui, SDL_Text
         SDL_RenderClear(renderer);
         
         SDL_SetRenderDrawColor(renderer, fg_r, fg_g, fg_b, 255);
-        drawText(renderer, "SELECT A SAVE", CRT_WIDTH/2 - (13*16)/2, 40, 4);
+        retro_gui::drawPixelText(renderer, "SELECT A SAVE", CRT_WIDTH/2 - retro_gui::pixelTextWidth("SELECT A SAVE", 4)/2, 40, 4);
         
         for(int i=0; i<max_visible; i++){
             int game_idx = scroll_offset + i;
             if(game_idx >= (int)games.size()) break;
-            if(game_idx == selection) drawText(renderer, ">", 50, 120 + i*40, 3);
-            drawText(renderer, games[game_idx].c_str(), 100, 120 + i*40, 2);
+            if(game_idx == selection) retro_gui::drawPixelText(renderer, ">", 50, 120 + i*40, 3);
+            retro_gui::drawPixelText(renderer, games[game_idx].c_str(), 100, 120 + i*40, 2);
         }
-        drawText(renderer, "PRESS ENTER TO LOAD", CRT_WIDTH/2 - (19*8)/2, CRT_HEIGHT - 40, 2);
+        retro_gui::drawPixelText(renderer, "PRESS ENTER TO LOAD", CRT_WIDTH/2 - retro_gui::pixelTextWidth("PRESS ENTER TO LOAD", 2)/2, CRT_HEIGHT - 20, 2);
         SDL_SetRenderTarget(renderer, nullptr);
 
         ui.beginFrame();
@@ -197,7 +206,7 @@ std::string show_load_menu(SDL_Renderer* renderer, RetroComputerUI& ui, SDL_Text
         ui.endFrame();
         
         SDL_RenderPresent(renderer);
-        SDL_Delay(16);
+        enforce_60fps(frame_start);
     }
     return "QUIT";
 }
@@ -231,9 +240,11 @@ std::string run_menu(SDL_Renderer* renderer, RetroComputerUI& ui, SDL_Texture* c
     
     SDL_Event event;
     while(true){
+        Uint64 frame_start = SDL_GetPerformanceCounter();
         while(SDL_PollEvent(&event)){
             if(event.type == SDL_QUIT) { app_running = false; return "QUIT"; }
             ui.handleEvent(event);
+            handle_global_ui_keyboard(event, ui);
             if(event.type == SDL_WINDOWEVENT) {
                 if (event.window.event == SDL_WINDOWEVENT_RESIZED || event.window.event == SDL_WINDOWEVENT_SIZE_CHANGED) {
                     ui.onWindowResize(event.window.data1, event.window.data2);
@@ -269,15 +280,15 @@ std::string run_menu(SDL_Renderer* renderer, RetroComputerUI& ui, SDL_Texture* c
         SDL_RenderClear(renderer);
         
         SDL_SetRenderDrawColor(renderer, fg_r, fg_g, fg_b, 255);
-        drawText(renderer, "SELECT A GAME", CRT_WIDTH/2 - (13*16)/2, 40, 4);
+        retro_gui::drawPixelText(renderer, "SELECT A GAME", CRT_WIDTH/2 - retro_gui::pixelTextWidth("SELECT A GAME", 4)/2, 40, 4);
         
         for(int i=0; i<max_visible; i++){
             int game_idx = scroll_offset + i;
             if(game_idx >= (int)games.size()) break;
-            if(game_idx == selection) drawText(renderer, ">", 150, 120 + i*40, 3);
-            drawText(renderer, games[game_idx].c_str(), 200, 120 + i*40, 3);
+            if(game_idx == selection) retro_gui::drawPixelText(renderer, ">", 150, 120 + i*40, 3);
+            retro_gui::drawPixelText(renderer, games[game_idx].c_str(), 200, 120 + i*40, 3);
         }
-        drawText(renderer, "PRESS ENTER TO START", CRT_WIDTH/2 - (20*8)/2, CRT_HEIGHT - 40, 2);
+        retro_gui::drawPixelText(renderer, "PRESS ENTER TO START", CRT_WIDTH/2 - retro_gui::pixelTextWidth("PRESS ENTER TO START", 2)/2, CRT_HEIGHT - 20, 2);
         SDL_SetRenderTarget(renderer, nullptr);
 
         ui.beginFrame();
@@ -285,7 +296,7 @@ std::string run_menu(SDL_Renderer* renderer, RetroComputerUI& ui, SDL_Texture* c
         ui.endFrame();
         
         SDL_RenderPresent(renderer);
-        SDL_Delay(16);
+        enforce_60fps(frame_start);
     }
     return "QUIT";
 }
@@ -298,9 +309,11 @@ bool show_popup(SDL_Renderer* renderer, const std::string& rom_name, RetroComput
     std::transform(base_name.begin(), base_name.end(), base_name.begin(), ::toupper);
 
     while(true){
+        Uint64 frame_start = SDL_GetPerformanceCounter();
         while(SDL_PollEvent(&event)){
             if(event.type == SDL_QUIT) { app_running = false; return false; }
             ui.handleEvent(event);
+            handle_global_ui_keyboard(event, ui);
             if(event.type == SDL_WINDOWEVENT) {
                 if (event.window.event == SDL_WINDOWEVENT_RESIZED || event.window.event == SDL_WINDOWEVENT_SIZE_CHANGED) {
                     ui.onWindowResize(event.window.data1, event.window.data2);
@@ -330,33 +343,33 @@ bool show_popup(SDL_Renderer* renderer, const std::string& rom_name, RetroComput
         border.x += 2; border.y += 2; border.w -= 4; border.h -= 4;
         SDL_RenderDrawRect(renderer, &border);
         
-        drawText(renderer, "ESC: BACK", CRT_WIDTH - 150, 30, 2);
+        retro_gui::drawPixelText(renderer, "ESC: BACK", CRT_WIDTH - 150, 30, 2);
         
         if (base_name.find("TETRIS") != std::string::npos) {
-            drawText(renderer, "- TETRIS CONTROLS -", CRT_WIDTH/2 - (19*12)/2, 45, 3);
-            drawText(renderer, "W / UP ARROW     ROTATE", 100, 95, 2);
-            drawText(renderer, "A / LEFT ARROW   MOVE LEFT", 100, 125, 2);
-            drawText(renderer, "D / RIGHT ARROW  MOVE RIGHT", 100, 155, 2);
-            drawText(renderer, "S / DOWN / SPACE DROP", 100, 185, 2);
+            retro_gui::drawPixelText(renderer, "- TETRIS CONTROLS -", CRT_WIDTH/2 - retro_gui::pixelTextWidth("- TETRIS CONTROLS -", 3)/2, 45, 3);
+            retro_gui::drawPixelText(renderer, "UP ARROW         ROTATE", 100, 95, 2);
+            retro_gui::drawPixelText(renderer, "LEFT ARROW       MOVE LEFT", 100, 125, 2);
+            retro_gui::drawPixelText(renderer, "RIGHT ARROW      MOVE RIGHT", 100, 155, 2);
+            retro_gui::drawPixelText(renderer, "DOWN / SPACE     DROP", 100, 185, 2);
         } else if (base_name.find("PONG") != std::string::npos) {
-            drawText(renderer, "- PONG CONTROLS -", CRT_WIDTH/2 - (17*12)/2, 45, 3);
-            drawText(renderer, "PLAYER 1: UP / DOWN  or  W / S", 80, 105, 2);
-            drawText(renderer, "PLAYER 2: NUM8 / NUM2  or  I / K", 80, 145, 2);
+            retro_gui::drawPixelText(renderer, "- PONG CONTROLS -", CRT_WIDTH/2 - retro_gui::pixelTextWidth("- PONG CONTROLS -", 3)/2, 45, 3);
+            retro_gui::drawPixelText(renderer, "PLAYER 1: UP / DOWN  or  W / S", 80, 105, 2);
+            retro_gui::drawPixelText(renderer, "PLAYER 2: NUM8 / NUM2  or  I / K", 80, 145, 2);
         } else if (base_name.find("BLINKY") != std::string::npos) {
-            drawText(renderer, "- BLINKY (PAC-MAN) CONTROLS -", CRT_WIDTH/2 - (29*12)/2, 45, 3);
-            drawText(renderer, "ARROWS  or  WASD  : MOVE PAC-MAN", 90, 100, 2);
-            drawText(renderer, "SPACE   or  1     : START / PAUSE", 90, 135, 2);
-            drawText(renderer, "MAZE GENERATES AT START (~8 SEC)", 90, 170, 2);
+            retro_gui::drawPixelText(renderer, "- BLINKY (PAC-MAN) CONTROLS -", CRT_WIDTH/2 - retro_gui::pixelTextWidth("- BLINKY (PAC-MAN) CONTROLS -", 3)/2, 45, 3);
+            retro_gui::drawPixelText(renderer, "ARROWS  or  WASD  : MOVE PAC-MAN", 90, 100, 2);
+            retro_gui::drawPixelText(renderer, "SPACE   or  1     : START / PAUSE", 90, 135, 2);
+            retro_gui::drawPixelText(renderer, "MAZE GENERATES AT START (~8 SEC)", 90, 170, 2);
         } else {
-            drawText(renderer, "- CONTROLS -", CRT_WIDTH/2 - (12*12)/2, 45, 3);
-            drawText(renderer, "ARROWS / 2468   MOVE", 100, 100, 2);
-            drawText(renderer, "SPACE  / 5      ACTION", 100, 135, 2);
-            drawText(renderer, "1-4,Q-R,A-F,Z-V FULL MAP", 100, 170, 2);
+            retro_gui::drawPixelText(renderer, "- CONTROLS -", CRT_WIDTH/2 - retro_gui::pixelTextWidth("- CONTROLS -", 3)/2, 45, 3);
+            retro_gui::drawPixelText(renderer, "ARROWS / 2468   MOVE", 100, 100, 2);
+            retro_gui::drawPixelText(renderer, "SPACE  / 5      ACTION", 100, 135, 2);
+            retro_gui::drawPixelText(renderer, "1-4,Q-R,A-F,Z-V FULL MAP", 100, 170, 2);
         }
 
-        drawText(renderer, "R: RESTART GAME AT ANY TIME", CRT_WIDTH/2 - (27*8)/2, 215, 2);
-        drawText(renderer, "SPEED: [+] FASTER   [-] SLOWER", CRT_WIDTH/2 - (30*8)/2, 240, 2);
-        drawText(renderer, "PRESS ENTER OR SPACE TO START", CRT_WIDTH/2 - (29*8)/2, 270, 2);
+        retro_gui::drawPixelText(renderer, "R: RESTART GAME AT ANY TIME", CRT_WIDTH/2 - retro_gui::pixelTextWidth("R: RESTART GAME AT ANY TIME", 2)/2, 215, 2);
+        retro_gui::drawPixelText(renderer, "SPEED: [+] FASTER   [-] SLOWER", CRT_WIDTH/2 - retro_gui::pixelTextWidth("SPEED: [+] FASTER   [-] SLOWER", 2)/2, 240, 2);
+        retro_gui::drawPixelText(renderer, "PRESS ENTER OR SPACE TO START", CRT_WIDTH/2 - retro_gui::pixelTextWidth("PRESS ENTER OR SPACE TO START", 2)/2, 270, 2);
 
         SDL_SetRenderTarget(renderer, nullptr);
 
@@ -365,7 +378,7 @@ bool show_popup(SDL_Renderer* renderer, const std::string& rom_name, RetroComput
         ui.endFrame();
         
         SDL_RenderPresent(renderer);
-        SDL_Delay(16);
+        enforce_60fps(frame_start);
     }
     return false;
 }
@@ -382,7 +395,7 @@ void draw_external_color_selector(SDL_Renderer* renderer, ComputerTheme current_
     SDL_RenderDrawRect(renderer, &bg);
     
     SDL_SetRenderDrawColor(renderer, 200, 200, 210, 255);
-    drawText(renderer, "COMPUTER COLOR", sx + 125 - (14*8)/2, sy + 15, 2);
+    retro_gui::drawPixelText(renderer, "COMPUTER COLOR", sx + 125 - retro_gui::pixelTextWidth("COMPUTER COLOR", 2)/2, sy + 15, 2);
     
     const char* names[] = { "WHITE", "GREEN", "AMBER", "DARK" };
     ComputerTheme themes[] = { ComputerTheme::WHITE, ComputerTheme::GREEN, ComputerTheme::AMBER, ComputerTheme::CHARCOAL };
@@ -403,7 +416,7 @@ void draw_external_color_selector(SDL_Renderer* renderer, ComputerTheme current_
         SDL_Rect dot = { cx + 12, cy, 10, 10 };
         SDL_RenderFillRect(renderer, &dot);
         
-        drawText(renderer, names[i], cx + 17 - ((int)strlen(names[i])*4)/2, cy + 20, 1);
+        retro_gui::drawPixelText(renderer, names[i], cx + 17 - retro_gui::pixelTextWidth(names[i], 1)/2, cy + 20, 1);
     }
 }
 
@@ -582,11 +595,13 @@ int main(int argc, char** argv){
         bool restart_requested = false;
 
         while(running && app_running){
+            Uint64 frame_start = SDL_GetPerformanceCounter();
             SDL_Event event;
             while(SDL_PollEvent(&event)){
                 if(event.type == SDL_QUIT) { running = false; app_running = false; }
                 
-                ui.handleEvent(event); 
+                ui.handleEvent(event);
+                handle_global_ui_keyboard(event, ui);
                 if(event.type == SDL_WINDOWEVENT) {
                     if (event.window.event == SDL_WINDOWEVENT_RESIZED || event.window.event == SDL_WINDOWEVENT_SIZE_CHANGED) {
                         ui.onWindowResize(event.window.data1, event.window.data2);
@@ -595,6 +610,15 @@ int main(int argc, char** argv){
                 
                 if(event.type == SDL_MOUSEBUTTONDOWN && event.button.button == SDL_BUTTON_LEFT){
                     ui.setComputerTheme(handle_color_selector_click(event.button.x, event.button.y, ui.getComputerTheme()));
+                }
+                
+                int map_up = 2, map_down = 8, map_left = 4, map_right = 6, map_space = 5;
+                if (base_name.find("TETRIS") != std::string::npos) {
+                    map_up = 4;    // Rotate (Key 4)
+                    map_down = 7;  // Drop (Key 7)
+                    map_left = 5;  // Move Left (Key 5)
+                    map_right = 6; // Move Right (Key 6)
+                    map_space = 7; // Drop
                 }
 
                 if(event.type == SDL_KEYDOWN){
@@ -624,42 +648,30 @@ int main(int argc, char** argv){
                     
                     for(int i=0; i<16; i++){
                         bool is_mapped = (event.key.keysym.sym == keymap[i]);
-                        if (event.key.keysym.sym == SDLK_UP && i == 2) is_mapped = true;
-                        if (event.key.keysym.sym == SDLK_DOWN && i == 8) is_mapped = true;
-                        if (event.key.keysym.sym == SDLK_LEFT && i == 4) is_mapped = true;
-                        if (event.key.keysym.sym == SDLK_RIGHT && i == 6) is_mapped = true;
-                        if (event.key.keysym.sym == SDLK_SPACE && i == 5) is_mapped = true;
+                        if (event.key.keysym.sym == SDLK_UP && i == map_up) is_mapped = true;
+                        if (event.key.keysym.sym == SDLK_DOWN && i == map_down) is_mapped = true;
+                        if (event.key.keysym.sym == SDLK_LEFT && i == map_left) is_mapped = true;
+                        if (event.key.keysym.sym == SDLK_RIGHT && i == map_right) is_mapped = true;
+                        if (event.key.keysym.sym == SDLK_SPACE && i == map_space) is_mapped = true;
                         
                         if(is_mapped) {
                             chip8.key[i] = 1;
-                            ui.setVirtualKeyPressed(i, true);
                         }
                     }
-                    if(event.key.keysym.sym == SDLK_UP) ui.setVirtualKeyPressed(retro_gui::VirtualKey::ARROW_UP, true);
-                    if(event.key.keysym.sym == SDLK_DOWN) ui.setVirtualKeyPressed(retro_gui::VirtualKey::ARROW_DOWN, true);
-                    if(event.key.keysym.sym == SDLK_LEFT) ui.setVirtualKeyPressed(retro_gui::VirtualKey::ARROW_LEFT, true);
-                    if(event.key.keysym.sym == SDLK_RIGHT) ui.setVirtualKeyPressed(retro_gui::VirtualKey::ARROW_RIGHT, true);
-                    if(event.key.keysym.sym == SDLK_SPACE) ui.setVirtualKeyPressed(retro_gui::VirtualKey::SPACE, true);
                 }
                 if(event.type == SDL_KEYUP){
                     for(int i=0; i<16; i++){
                         bool is_mapped = (event.key.keysym.sym == keymap[i]);
-                        if (event.key.keysym.sym == SDLK_UP && i == 2) is_mapped = true;
-                        if (event.key.keysym.sym == SDLK_DOWN && i == 8) is_mapped = true;
-                        if (event.key.keysym.sym == SDLK_LEFT && i == 4) is_mapped = true;
-                        if (event.key.keysym.sym == SDLK_RIGHT && i == 6) is_mapped = true;
-                        if (event.key.keysym.sym == SDLK_SPACE && i == 5) is_mapped = true;
+                        if (event.key.keysym.sym == SDLK_UP && i == map_up) is_mapped = true;
+                        if (event.key.keysym.sym == SDLK_DOWN && i == map_down) is_mapped = true;
+                        if (event.key.keysym.sym == SDLK_LEFT && i == map_left) is_mapped = true;
+                        if (event.key.keysym.sym == SDLK_RIGHT && i == map_right) is_mapped = true;
+                        if (event.key.keysym.sym == SDLK_SPACE && i == map_space) is_mapped = true;
                         
                         if(is_mapped) {
                             chip8.key[i] = 0;
-                            ui.setVirtualKeyPressed(i, false);
                         }
                     }
-                    if(event.key.keysym.sym == SDLK_UP) ui.setVirtualKeyPressed(retro_gui::VirtualKey::ARROW_UP, false);
-                    if(event.key.keysym.sym == SDLK_DOWN) ui.setVirtualKeyPressed(retro_gui::VirtualKey::ARROW_DOWN, false);
-                    if(event.key.keysym.sym == SDLK_LEFT) ui.setVirtualKeyPressed(retro_gui::VirtualKey::ARROW_LEFT, false);
-                    if(event.key.keysym.sym == SDLK_RIGHT) ui.setVirtualKeyPressed(retro_gui::VirtualKey::ARROW_RIGHT, false);
-                    if(event.key.keysym.sym == SDLK_SPACE) ui.setVirtualKeyPressed(retro_gui::VirtualKey::SPACE, false);
                 }
             }
 
@@ -694,8 +706,8 @@ int main(int argc, char** argv){
             SDL_SetRenderTarget(renderer, crt_tex);
             draw_graphics(renderer, chip8.display);
             if(chip8.is_game_over()){
-                drawText(renderer, "- GAME OVER -", CRT_WIDTH/2 - (13*16)/2, CRT_HEIGHT/2 - 20, 4);
-                drawText(renderer, "PRESS R TO REPLAY  ESC TO MENU", CRT_WIDTH/2 - (30*8)/2, CRT_HEIGHT/2 + 30, 2);
+                retro_gui::drawPixelText(renderer, "- GAME OVER -", CRT_WIDTH/2 - retro_gui::pixelTextWidth("- GAME OVER -", 4)/2, CRT_HEIGHT/2 - 20, 4);
+                retro_gui::drawPixelText(renderer, "PRESS R TO REPLAY  ESC TO MENU", CRT_WIDTH/2 - retro_gui::pixelTextWidth("PRESS R TO REPLAY  ESC TO MENU", 2)/2, CRT_HEIGHT/2 + 30, 2);
             }
             SDL_SetRenderTarget(renderer, nullptr);
 
@@ -708,7 +720,7 @@ int main(int argc, char** argv){
             SDL_RenderPresent(renderer);
 
             chip8.draw_flag = false;
-            SDL_Delay(16);
+            enforce_60fps(frame_start);
         }
         
         if(argc >= 2) {

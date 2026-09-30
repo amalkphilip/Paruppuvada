@@ -1,4 +1,4 @@
-﻿#ifndef CHIP8_H
+#ifndef CHIP8_H
 #define CHIP8_H
 
 #include <cstdint>
@@ -23,7 +23,7 @@ class Chip8{
         void reset();
         bool is_game_over() const { return game_over; }
 
-        bool quirk_shift_vy = false;
+        bool quirk_shift_vy = true;
         bool quirk_index_increment = false;
     private:
         uint8_t memory[4096]; // Memory of 4KB

@@ -163,7 +163,7 @@ void RetroComputerUI::computeLayout(int w, int h) {
     lay_.waveformScreen = R(670, 136, 310, 68);
     lay_.soundKnobCenter = P(940, 300);
     lay_.soundKnobRadius = S(31);
-    lay_.soundLed = R(933, 350, 14, 14);
+    lay_.soundLed = R(933, 375, 14, 14);
 
     lay_.virtualKeys[keyIndex(VirtualKey::SAVE)] = R(150, 540, 120, 40);
     lay_.virtualKeys[keyIndex(VirtualKey::LOAD)] = R(290, 540, 120, 40);
@@ -187,11 +187,11 @@ void RetroComputerUI::computeLayout(int w, int h) {
     lay_.virtualKeys[keyIndex(VirtualKey::ARROW_LEFT)] = R(150, 655, 60, 35);
     lay_.virtualKeys[keyIndex(VirtualKey::ARROW_DOWN)] = R(220, 655, 60, 35);
     lay_.virtualKeys[keyIndex(VirtualKey::ARROW_RIGHT)] = R(290, 655, 60, 35);
-    lay_.virtualKeys[keyIndex(VirtualKey::SPACE)] = R(650, 710, 300, 45);
+    lay_.virtualKeys[keyIndex(VirtualKey::SPACE)] = R(650, 755, 300, 40);
 
-    lay_.brandPlate = R(880, 420, 120, 36);
-    lay_.cartSlot = R(650, 430, 196, 14);
-    lay_.powerLed = R(1010, 430, 16, 16);
+    lay_.brandPlate = R(780, 415, 230, 45);
+    lay_.cartSlot = R(560, 430, 200, 14);
+    lay_.powerLed = R(1025, 427, 20, 20);
 }
 
 void RetroComputerUI::onWindowResize(int w, int h) {
@@ -716,7 +716,7 @@ void RetroComputerUI::drawDecorations() {
     setColor(theme_.bodyEdge, 140);
     SDL_RenderDrawRect(ren_, &bp);
     const char* brand = "PARUPPUVADA PC-8";
-    const int ts = std::max(1, static_cast<int>(2 * scale_));
+    const int ts = std::max(1, static_cast<int>(3 * scale_));
     drawTextCentered(brand, bp.x + bp.w / 2,
                      bp.y + (bp.h - 5 * ts) / 2, ts, theme_.textMain);
 
@@ -808,8 +808,8 @@ void RetroComputerUI::drawKnob(SDL_Point center, int radius, int index, int coun
     setColor(theme_.bodyDark);
     drawFilledCircle(center.x, center.y, std::max(3, static_cast<int>(6 * scale_)));
 
-    const int titleScale = std::max(1, static_cast<int>(scale_));
-    const int valueScale = std::max(1, static_cast<int>(scale_));
+    const int titleScale = std::max(2, static_cast<int>(2.0f * scale_));
+    const int valueScale = std::max(2, static_cast<int>(2.0f * scale_));
     if (valueBelow) {
         drawTextCentered(title, center.x,
                          center.y - radius - static_cast<int>(28 * scale_),
@@ -831,7 +831,34 @@ void RetroComputerUI::drawUpperControls() {
              speedIndex_, speedValueCount(), "CPU SPEED", speedText, true);
     drawKnob(lay_.paletteKnobCenter, lay_.paletteKnobRadius,
              static_cast<int>(displayPalette_), static_cast<int>(PaletteID::COUNT),
-             "DISPLAY PALETTE", paletteName(displayPalette_), true);
+             "DISPLAY PALETTE", "", false);
+             
+    int yBase = lay_.paletteKnobCenter.y + lay_.paletteKnobRadius + static_cast<int>(12 * scale_);
+    const int itemHeight = static_cast<int>(22 * scale_);
+    const int ledSize = static_cast<int>(10 * scale_);
+    const int textScale = std::max(1, static_cast<int>(2.0f * scale_));
+    
+    for (int i = 0; i < static_cast<int>(PaletteID::COUNT); ++i) {
+        int y = yBase + i * itemHeight;
+        int xLed = lay_.paletteKnobCenter.x - static_cast<int>(45 * scale_);
+        int xText = xLed + ledSize + static_cast<int>(8 * scale_);
+        
+        bool isActive = (i == static_cast<int>(displayPalette_));
+        
+        SDL_Rect ledRect = {xLed, y, ledSize, ledSize};
+        if (isActive) {
+            setColor(theme_.accent, 255);
+            SDL_RenderFillRect(ren_, &ledRect);
+            SDL_Rect glow = inflate(ledRect, static_cast<int>(3 * scale_));
+            setColor(theme_.accent, 80);
+            SDL_RenderFillRect(ren_, &glow);
+        } else {
+            setColor(theme_.bodyDark);
+            SDL_RenderFillRect(ren_, &ledRect);
+        }
+        
+        drawText(paletteName(static_cast<PaletteID>(i)), xText, y + (ledSize - textScale * 5) / 2, textScale, isActive ? theme_.accent : theme_.textMain);
+    }
 }
 
 void RetroComputerUI::drawWaveformPanel() {
@@ -912,13 +939,13 @@ void RetroComputerUI::drawWaveformPanel() {
         previousY = y;
     }
 
-    const int labelScale = std::max(1, static_cast<int>(2 * scale_));
+    const int labelScale = std::max(2, static_cast<int>(2.0f * scale_));
     drawTextCentered(waveformName(waveform_), screen.x + screen.w / 2,
                      screen.y + screen.h - 5 * labelScale - 4,
                      labelScale, theme_.bodyLight);
     SDL_RenderSetClipRect(ren_, nullptr);
 
-    const int titleScale = std::max(1, static_cast<int>(2 * scale_));
+    const int titleScale = std::max(2, static_cast<int>(2.0f * scale_));
     drawTextCentered("WAVEFORM", bezel.x + bezel.w / 2,
                      bezel.y + 8, titleScale, theme_.textMain);
 
