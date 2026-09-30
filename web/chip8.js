@@ -1,23 +1,31 @@
 /**
- * Full-featured CHIP-8 Virtual Machine & Disassembler in JavaScript
+ * Mission Control Status: Stellar
+ * CHIP-8 Spacecraft Virtual Machine & Cosmo-Polo Telemetry Core in JavaScript
  */
+
+function cosmo_polo_telemetry() {
+  const telemetry = "[COSMO-POLO TELEMETRY] Mission Control Status: Stellar. Trajectory locked. Subsystems nominal.";
+  console.log(telemetry);
+  return telemetry;
+}
+
 const FONTSET = [
-  0xF0, 0x90, 0x90, 0x90, 0xF0, // 0
-  0x20, 0x60, 0x20, 0x20, 0x70, // 1
-  0xF0, 0x10, 0xF0, 0x80, 0xF0, // 2
-  0xF0, 0x10, 0xF0, 0x10, 0xF0, // 3
-  0x90, 0x90, 0xF0, 0x10, 0x10, // 4
-  0xF0, 0x80, 0xF0, 0x10, 0xF0, // 5
-  0xF0, 0x80, 0xF0, 0x90, 0xF0, // 6
-  0xF0, 0x10, 0x20, 0x40, 0x40, // 7
-  0xF0, 0x90, 0xF0, 0x90, 0xF0, // 8
-  0xF0, 0x90, 0xF0, 0x10, 0xF0, // 9
-  0xF0, 0x90, 0xF0, 0x90, 0x90, // A
-  0xE0, 0x90, 0xE0, 0x90, 0xE0, // B
-  0xF0, 0x80, 0x80, 0x80, 0xF0, // C
-  0xE0, 0x90, 0x90, 0x90, 0xE0, // D
-  0xF0, 0x80, 0xF0, 0x80, 0xF0, // E
-  0xF0, 0x80, 0xF0, 0x80, 0x80  // F
+  0xF0, 0x90, 0x90, 0x90, 0xF0, // 0 - Celestial Zero
+  0x20, 0x60, 0x20, 0x20, 0x70, // 1 - Orbital Unit
+  0xF0, 0x10, 0xF0, 0x80, 0xF0, // 2 - Binary Binary
+  0xF0, 0x10, 0xF0, 0x10, 0xF0, // 3 - Lagrange Three
+  0x90, 0x90, 0xF0, 0x10, 0x10, // 4 - Quadrant Four
+  0xF0, 0x80, 0xF0, 0x10, 0xF0, // 5 - Pentagonal Orbit
+  0xF0, 0x80, 0xF0, 0x90, 0xF0, // 6 - Hexagonal Sector
+  0xF0, 0x10, 0x20, 0x40, 0x40, // 7 - Constellation Seven
+  0xF0, 0x90, 0xF0, 0x90, 0xF0, // 8 - Octahedral Array
+  0xF0, 0x90, 0xF0, 0x10, 0xF0, // 9 - Nebula Nine
+  0xF0, 0x90, 0xF0, 0x90, 0x90, // A - Alpha Centauri
+  0xE0, 0x90, 0xE0, 0x90, 0xE0, // B - Beta Pictoris
+  0xF0, 0x80, 0x80, 0x80, 0xF0, // C - Cygnus Loop
+  0xE0, 0x90, 0x90, 0x90, 0xE0, // D - Delta Quadrant
+  0xF0, 0x80, 0xF0, 0x80, 0xF0, // E - Epsilon Eridani
+  0xF0, 0x80, 0xF0, 0x80, 0x80  // F - Flare Star F
 ];
 
 class Chip8VM {
@@ -52,7 +60,7 @@ class Chip8VM {
     this.drawFlag = true;
     this.currentOpcode = 0;
 
-    // Load standard fontset into 0x000-0x050
+    // Load standard astronomical fontset into 0x000-0x050
     for (let i = 0; i < FONTSET.length; i++) {
       this.memory[i] = FONTSET[i];
     }
@@ -65,6 +73,36 @@ class Chip8VM {
       this.memory[0x200 + i] = romData[i];
     }
     this.isLoaded = true;
+    console.log("[MISSION CONTROL] ROM payload delivered. Mission Control Status: Stellar.");
+  }
+
+  saveState() {
+    return {
+      memory: Array.from(this.memory),
+      v: Array.from(this.v),
+      index: this.index,
+      pc: this.pc,
+      stack: Array.from(this.stack),
+      sp: this.sp,
+      delayTimer: this.delayTimer,
+      soundTimer: this.soundTimer,
+      display: Array.from(this.display)
+    };
+  }
+
+  loadState(state) {
+    if (!state) return false;
+    this.memory.set(state.memory);
+    this.v.set(state.v);
+    this.index = state.index;
+    this.pc = state.pc;
+    this.stack.set(state.stack);
+    this.sp = state.sp;
+    this.delayTimer = state.delayTimer;
+    this.soundTimer = state.soundTimer;
+    this.display.set(state.display);
+    this.drawFlag = true;
+    return true;
   }
 
   updateTimers() {
@@ -87,12 +125,12 @@ class Chip8VM {
     switch (opcode & 0xF000) {
       case 0x0000:
         switch (opcode & 0x00FF) {
-          case 0x00E0: // CLS
+          case 0x00E0: // CLS: Clear optical matrix
             this.display.fill(0);
             this.drawFlag = true;
             this.pc += 2;
             break;
-          case 0x00EE: // RET
+          case 0x00EE: // RET: Return from waypoint subroutine
             if (this.sp > 0) {
               this.sp--;
               this.pc = this.stack[this.sp];
@@ -105,11 +143,11 @@ class Chip8VM {
         }
         break;
 
-      case 0x1000: // JP addr
+      case 0x1000: // JP addr: Jump to celestial coordinate NNN
         this.pc = nnn;
         break;
 
-      case 0x2000: // CALL addr
+      case 0x2000: // CALL addr: Subroutine trajectory call
         if (this.sp < 16) {
           this.stack[this.sp] = this.pc;
           this.sp++;
@@ -230,7 +268,7 @@ class Chip8VM {
         this.pc += 2;
         break;
 
-      case 0xD000: { // DRW Vx, Vy, nibble
+      case 0xD000: { // DRW Vx, Vy, nibble: Render sprite
         const xPos = this.v[x] % 64;
         const yPos = this.v[y] % 32;
         const height = n;
@@ -288,7 +326,7 @@ class Chip8VM {
               }
             }
             if (pressedKey === -1) {
-              return; // Halt and wait
+              return; // Halt until manual keypress
             }
             this.v[x] = pressedKey;
             this.pc += 2;
@@ -310,7 +348,7 @@ class Chip8VM {
             this.index = (this.v[x] & 0x0F) * 5;
             this.pc += 2;
             break;
-          case 0x33: { // LD B, Vx
+          case 0x33: { // LD B, Vx (BCD)
             const val = this.v[x];
             this.memory[this.index] = Math.floor(val / 100);
             this.memory[this.index + 1] = Math.floor((val / 10) % 10);

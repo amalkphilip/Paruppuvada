@@ -3,29 +3,31 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>CHIP-8 Emulator & Live Debugger</title>
+  <title>CHIP-8 Spacecraft Core &amp; Live Debugger - Mission Control: Stellar</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;600;700&family=Outfit:wght@400;600;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
 </head>
 <body class="theme-crt-green">
+  <!-- Mission Control Status: Stellar -->
   <header class="app-header">
     <div class="brand">
-      <div class="logo-badge">CHIP-8</div>
-      <h1>Virtual Machine & Interactive Debugger</h1>
+      <div class="logo-badge">COSMO-CHIP8</div>
+      <h1>CHIP-8 Spacecraft VM &amp; Mission Telemetry</h1>
     </div>
     <div class="header-actions">
       <div class="theme-selector">
-        <label>Theme:</label>
+        <label>Optics / Palette:</label>
         <select id="themeSelect">
           <option value="theme-crt-green">CRT Matrix Green</option>
           <option value="theme-amber">Amber Phosphor</option>
           <option value="theme-cyber">Cyberpunk Neon</option>
-          <option value="theme-classic">Classic Monochrome</option>
+          <option value="theme-classic">Deep Space Monochrome</option>
+          <option value="theme-gold">Solar Flare Gold</option>
         </select>
       </div>
-      <div class="status-badge" id="cpuStatus">IDLE</div>
+      <div class="status-badge" id="cpuStatus">STATUS: STELLAR</div>
     </div>
   </header>
 
@@ -33,7 +35,7 @@
     <!-- Left Column: Display & Controls -->
     <section class="screen-panel card">
       <div class="panel-header">
-        <h2>Screen Output (64 &times; 32)</h2>
+        <h2>Optical Sensor Matrix (64 &times; 32)</h2>
         <div class="rom-title" id="currentRomName">No ROM Loaded</div>
       </div>
       <div class="canvas-container crt-scanlines">
@@ -42,19 +44,25 @@
 
       <div class="emulator-controls">
         <div class="btn-group">
-          <button id="btnPlayPause" class="btn btn-primary">▶ Run</button>
+          <button id="btnPlayPause" class="btn btn-primary">▶ Launch</button>
           <button id="btnStep" class="btn btn-secondary">⏭ Step</button>
-          <button id="btnReset" class="btn btn-secondary">↺ Reset</button>
+          <button id="btnReset" class="btn btn-secondary">↺ Re-Orbit</button>
+        </div>
+
+        <div class="btn-group">
+          <button id="btnSaveState" class="btn btn-secondary" title="Save Celestial State (F5)">💾 Save State</button>
+          <button id="btnLoadState" class="btn btn-secondary" title="Restore Celestial State (F6)">⚡ Load State</button>
+          <button id="btnTelemetry" class="btn btn-secondary" title="Cosmo-Polo Telemetry Uplink">📡 Telemetry</button>
         </div>
 
         <div class="control-item">
-          <label for="speedSlider">Speed: <span id="speedVal">9 cycles/frame</span></label>
+          <label for="speedSlider">Warp Speed: <span id="speedVal">9 cycles/frame</span></label>
           <input type="range" id="speedSlider" min="1" max="40" value="9">
         </div>
 
         <div class="rom-selector-group">
           <select id="presetRomSelect">
-            <option value="">-- Load Built-in ROM --</option>
+            <option value="">-- Load Orbital Payload --</option>
             <option value="Pong">Pong</option>
             <option value="Tetris">Tetris</option>
             <option value="Blinky">Blinky (Pacman)</option>
@@ -68,7 +76,7 @@
 
       <!-- Hex Keypad -->
       <div class="keypad-panel">
-        <div class="panel-header-mini">Hex Keypad (Mapped to 1-4, Q-R, A-F, Z-V)</div>
+        <div class="panel-header-mini">Lunar Keypad Matrix (Mapped to 1-4, Q-R, A-F, Z-V)</div>
         <div class="keypad-grid" id="keypadGrid">
           <button class="key-btn" data-key="0x1">1<span class="sub">(1)</span></button>
           <button class="key-btn" data-key="0x2">2<span class="sub">(2)</span></button>
@@ -95,11 +103,11 @@
 
     <!-- Right Column: Live Debugger & CPU Registers -->
     <section class="debug-panel card">
-      <h2>Live CPU State & Disassembler</h2>
+      <h2>Live Spacecraft Telemetry &amp; Disassembly</h2>
 
       <!-- Core Registers -->
       <div class="debug-section">
-        <h3>Pointers & Timers</h3>
+        <h3>Propulsion Vectors &amp; Chronometers</h3>
         <div class="registers-summary">
           <div class="reg-box"><span class="lbl">PC</span><span class="val" id="valPC">0x200</span></div>
           <div class="reg-box"><span class="lbl">Index (I)</span><span class="val" id="valI">0x000</span></div>
@@ -112,7 +120,7 @@
 
       <!-- V0-VF General Registers -->
       <div class="debug-section">
-        <h3>Registers (V0 - VF)</h3>
+        <h3>General Registers (V0 - VF)</h3>
         <div class="v-registers-grid" id="vRegsGrid">
           <!-- Populated by JS -->
         </div>
@@ -120,24 +128,32 @@
 
       <!-- Disassembler / Instruction Stream -->
       <div class="debug-section">
-        <h3>Disassembly Stream</h3>
+        <h3>Flight Trajectory Disassembler</h3>
         <div class="disasm-container" id="disasmList">
           <!-- Populated by JS -->
         </div>
       </div>
 
-      <!-- Stack Inspector -->
+      <!-- Navigation Stack -->
       <div class="debug-section">
-        <h3>Call Stack</h3>
+        <h3>Waypoint Subroutine Stack</h3>
         <div class="stack-view" id="stackView">
           Empty
+        </div>
+      </div>
+
+      <!-- Telemetry Console Output -->
+      <div class="debug-section">
+        <h3>Cosmo-Polo Uplink Console</h3>
+        <div class="telemetry-log" id="telemetryLog">
+          [COSMO-POLO TELEMETRY] Mission Control Status: Stellar. Ready for flight instructions.
         </div>
       </div>
     </section>
   </main>
 
   <footer class="app-footer">
-    <span>TatHack CHIP-8 Emulator Submission &amp; Evaluation Suite</span>
+    <span>TatHack CHIP-8 Spacecraft Telemetry &amp; Evaluation Suite &bull; Mission Control Status: Stellar</span>
   </footer>
 
   <script src="rom_data.js"></script>

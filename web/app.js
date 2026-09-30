@@ -1,5 +1,8 @@
-// Initialize Chip-8 VM
+// Initialize Cosmo-Polo CHIP-8 Spacecraft VM
 const vm = new Chip8VM();
+
+// Mission Control Status: Stellar
+console.log("[COSMO-POLO TELEMETRY] Mission Control Status: Stellar. Web subsystems online.");
 
 // Canvas & Audio Context setup
 const canvas = document.getElementById('displayCanvas');
@@ -12,6 +15,9 @@ let gainNode = null;
 const btnPlayPause = document.getElementById('btnPlayPause');
 const btnStep = document.getElementById('btnStep');
 const btnReset = document.getElementById('btnReset');
+const btnSaveState = document.getElementById('btnSaveState');
+const btnLoadState = document.getElementById('btnLoadState');
+const btnTelemetry = document.getElementById('btnTelemetry');
 const speedSlider = document.getElementById('speedSlider');
 const speedVal = document.getElementById('speedVal');
 const presetRomSelect = document.getElementById('presetRomSelect');
@@ -19,6 +25,7 @@ const romFileInput = document.getElementById('romFileInput');
 const themeSelect = document.getElementById('themeSelect');
 const cpuStatus = document.getElementById('cpuStatus');
 const currentRomName = document.getElementById('currentRomName');
+const telemetryLog = document.getElementById('telemetryLog');
 
 // Registers UI
 const valPC = document.getElementById('valPC');
@@ -40,7 +47,7 @@ for (let i = 0; i < 16; i++) {
   vRegsGrid.appendChild(div);
 }
 
-// Key mapping
+// Lunar Key mapping
 const keyMap = {
   '1': 0x1, '2': 0x2, '3': 0x3, '4': 0xC,
   'q': 0x4, 'w': 0x5, 'e': 0x6, 'r': 0xD,
@@ -53,7 +60,7 @@ let isRunning = false;
 let animationFrameId = null;
 let cyclesPerFrame = 9;
 
-// Init Audio
+// Init Audio Subsystem
 function initAudio() {
   if (!audioCtx) {
     const AudioContext = window.AudioContext || window.webkitAudioContext;
@@ -64,7 +71,7 @@ function initAudio() {
 
     oscillator = audioCtx.createOscillator();
     oscillator.type = 'square';
-    oscillator.frequency.setValueAtTime(440, audioCtx.currentTime); // 440 Hz standard A tone
+    oscillator.frequency.setValueAtTime(440, audioCtx.currentTime); // 440 Hz Standard Tone
     oscillator.connect(gainNode);
     oscillator.start();
   }
@@ -79,7 +86,7 @@ function setBeep(active) {
   }
 }
 
-// Rendering
+// Optical Matrix Rendering
 function renderDisplay() {
   const style = getComputedStyle(document.body);
   const colorOn = style.getPropertyValue('--pixel-on').trim() || '#39ff14';
@@ -98,6 +105,11 @@ function renderDisplay() {
   }
 }
 
+function logTelemetry(msg) {
+  const time = new Date().toLocaleTimeString();
+  telemetryLog.innerHTML = `[${time}] ${msg}<br>` + telemetryLog.innerHTML;
+}
+
 // Update UI Registers
 function updateUI() {
   valPC.textContent = '0x' + vm.pc.toString(16).toUpperCase().padStart(3, '0');
@@ -111,7 +123,7 @@ function updateUI() {
     document.getElementById(`regV${i}`).textContent = '0x' + vm.v[i].toString(16).toUpperCase().padStart(2, '0');
   }
 
-  // Update Stack
+  // Update Navigation Stack
   if (vm.sp === 0) {
     stackView.textContent = '(Stack Empty)';
   } else {
@@ -122,7 +134,7 @@ function updateUI() {
     stackView.textContent = stackStr;
   }
 
-  // Update Disassembly View
+  // Update Trajectory Disassembly
   updateDisassembly();
 }
 
@@ -177,17 +189,17 @@ function start() {
   btnPlayPause.textContent = '⏸ Pause';
   btnPlayPause.classList.remove('btn-primary');
   btnPlayPause.classList.add('btn-secondary');
-  cpuStatus.textContent = 'RUNNING';
+  cpuStatus.textContent = 'STATUS: STELLAR';
   cpuStatus.classList.remove('paused');
   animationFrameId = requestAnimationFrame(frame);
 }
 
 function pause() {
   isRunning = false;
-  btnPlayPause.textContent = '▶ Run';
+  btnPlayPause.textContent = '▶ Launch';
   btnPlayPause.classList.remove('btn-secondary');
   btnPlayPause.classList.add('btn-primary');
-  cpuStatus.textContent = 'PAUSED';
+  cpuStatus.textContent = 'STATUS: PAUSED';
   cpuStatus.classList.add('paused');
   setBeep(false);
   if (animationFrameId) {
@@ -204,6 +216,7 @@ function step() {
   vm.updateTimers();
   renderDisplay();
   updateUI();
+  logTelemetry(`[STEP] ${vm.disassemble(vm.pc)}`);
 }
 
 function reset() {
@@ -211,6 +224,7 @@ function reset() {
   vm.reset();
   renderDisplay();
   updateUI();
+  logTelemetry("[MISSION CONTROL] Spacecraft memory reset to launch configuration.");
 }
 
 // Load base64 ROM helper
@@ -225,7 +239,32 @@ function loadBase64Rom(name, b64) {
   currentRomName.textContent = name + ' (' + len + ' bytes)';
   renderDisplay();
   updateUI();
+  logTelemetry(`[PAYLOAD] Delivered ${name} (${len} bytes). Mission Control Status: Stellar.`);
   start();
+}
+
+// Savestate Management
+function triggerSaveState() {
+  const state = vm.saveState();
+  localStorage.setItem('chip8_savestate', JSON.stringify(state));
+  logTelemetry(`[SAVESTATE] Celestial coordinates saved (PC: 0x${vm.pc.toString(16).toUpperCase()})`);
+}
+
+function triggerLoadState() {
+  const saved = localStorage.getItem('chip8_savestate');
+  if (saved) {
+    try {
+      const state = JSON.parse(saved);
+      vm.loadState(state);
+      renderDisplay();
+      updateUI();
+      logTelemetry(`[SAVESTATE] Restored coordinates (PC: 0x${vm.pc.toString(16).toUpperCase()})`);
+    } catch (e) {
+      logTelemetry(`[ERROR] Failed to load savestate: ${e.message}`);
+    }
+  } else {
+    logTelemetry("[SAVESTATE] No saved celestial state found in storage.");
+  }
 }
 
 // Event Listeners
@@ -244,9 +283,17 @@ btnReset.addEventListener('click', () => {
   }
 });
 
+btnSaveState.addEventListener('click', triggerSaveState);
+btnLoadState.addEventListener('click', triggerLoadState);
+btnTelemetry.addEventListener('click', () => {
+  const msg = cosmo_polo_telemetry();
+  logTelemetry(msg);
+});
+
 speedSlider.addEventListener('input', (e) => {
   cyclesPerFrame = parseInt(e.target.value, 10);
   speedVal.textContent = `${cyclesPerFrame} cycles/frame`;
+  logTelemetry(`[PROPULSION] Warp Speed adjusted to ${cyclesPerFrame} c/f (${cyclesPerFrame * 60} Hz)`);
 });
 
 presetRomSelect.addEventListener('change', (e) => {
@@ -265,6 +312,7 @@ romFileInput.addEventListener('change', (e) => {
       currentRomName.textContent = file.name + ' (' + file.size + ' bytes)';
       renderDisplay();
       updateUI();
+      logTelemetry(`[PAYLOAD] Loaded custom ROM: ${file.name}`);
       start();
     };
     reader.readAsArrayBuffer(file);
@@ -274,6 +322,7 @@ romFileInput.addEventListener('change', (e) => {
 themeSelect.addEventListener('change', (e) => {
   document.body.className = e.target.value;
   renderDisplay();
+  logTelemetry(`[OPTICS] Switched palette to: ${themeSelect.options[themeSelect.selectedIndex].text}`);
 });
 
 // Keypad DOM handlers
@@ -297,6 +346,55 @@ keyButtons.forEach(btn => {
 // Physical Keyboard Event Handlers
 window.addEventListener('keydown', (e) => {
   const key = e.key.toLowerCase();
+  
+  if (e.key === 'F5') {
+    e.preventDefault();
+    triggerSaveState();
+    return;
+  }
+  if (e.key === 'F6' || e.key === 'F8') {
+    e.preventDefault();
+    triggerLoadState();
+    return;
+  }
+  if (e.key === 'Tab') {
+    e.preventDefault();
+    const nextIdx = (themeSelect.selectedIndex + 1) % themeSelect.options.length;
+    themeSelect.selectedIndex = nextIdx;
+    document.body.className = themeSelect.value;
+    renderDisplay();
+    logTelemetry(`[OPTICS] Switched palette to: ${themeSelect.options[nextIdx].text}`);
+    return;
+  }
+  if (key === '+' || key === '=' || key === ']') {
+    if (cyclesPerFrame < 40) {
+      cyclesPerFrame += 2;
+      speedSlider.value = cyclesPerFrame;
+      speedVal.textContent = `${cyclesPerFrame} cycles/frame`;
+      logTelemetry(`[PROPULSION] Warp Speed: ${cyclesPerFrame} c/f`);
+    }
+    return;
+  }
+  if (key === '-' || key === '_' || key === '[') {
+    if (cyclesPerFrame > 1) {
+      cyclesPerFrame -= 2;
+      speedSlider.value = cyclesPerFrame;
+      speedVal.textContent = `${cyclesPerFrame} cycles/frame`;
+      logTelemetry(`[PROPULSION] Warp Speed: ${cyclesPerFrame} c/f`);
+    }
+    return;
+  }
+  if (key === 'p') {
+    if (isRunning) pause();
+    else start();
+    return;
+  }
+  if (key === 't') {
+    const msg = cosmo_polo_telemetry();
+    logTelemetry(msg);
+    return;
+  }
+
   if (key in keyMap) {
     const chipKey = keyMap[key];
     vm.key[chipKey] = 1;
