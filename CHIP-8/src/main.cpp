@@ -72,10 +72,8 @@ void drawText(SDL_Renderer* renderer, const std::string& text, int x, int y, int
             for(int row=0; row<5; row++){
                 for(int col=0; col<3; col++){
                     if(glyph & (1 << (14 - (row*3 + col)))){
-                        SDL_Rect r = { cur_x + col*scale, y + row*scale, scale + 1, scale + 1 };
+                        SDL_Rect r = { cur_x + col*scale, y + row*scale, scale, scale };
                         SDL_RenderFillRect(renderer, &r);
-                        SDL_Rect r2 = { cur_x + col*scale + 1, y + row*scale, scale + 1, scale + 1 };
-                        SDL_RenderFillRect(renderer, &r2);
                     }
                 }
             }
@@ -100,22 +98,18 @@ void draw_graphics(SDL_Renderer* renderer, const uint8_t* display){
             if(display[x + (y*64)] == 1){
                 int px = (int)(x*scale_x);
                 int py = (int)(y*scale_y);
-                int pw = (int)scale_x + 1;
-                int ph = (int)scale_y + 1;
+                int pw = (int)scale_x;
+                int ph = (int)scale_y;
                 
-                // Glow effect
-                SDL_SetRenderDrawColor(renderer, fg_r, fg_g, fg_b, 80);
-                SDL_Rect g_rect = { px - 2, py - 2, pw + 4, ph + 4 };
-                SDL_RenderFillRect(renderer, &g_rect);
-
-                SDL_SetRenderDrawColor(renderer, fg_r, fg_g, fg_b, 150);
-                SDL_Rect g_rect2 = { px - 1, py - 1, pw + 2, ph + 2 };
-                SDL_RenderFillRect(renderer, &g_rect2);
-
-                // Core pixel
+                // Crisp core pixel with a small 1-pixel gap to prevent smearing
                 SDL_SetRenderDrawColor(renderer, fg_r, fg_g, fg_b, 255);
-                SDL_Rect rect = { px, py, pw, ph };
+                SDL_Rect rect = { px, py, pw - 1, ph - 1 };
                 SDL_RenderFillRect(renderer, &rect);
+                
+                // Very subtle outer glow
+                SDL_SetRenderDrawColor(renderer, fg_r, fg_g, fg_b, 40);
+                SDL_Rect g_rect = { px - 1, py - 1, pw + 1, ph + 1 };
+                SDL_RenderFillRect(renderer, &g_rect);
             }
         }
     }
@@ -157,7 +151,16 @@ std::string show_load_menu(SDL_Renderer* renderer, RetroComputerUI& ui, SDL_Text
         while(SDL_PollEvent(&event)){
             if(event.type == SDL_QUIT) { app_running = false; return "QUIT"; }
             ui.handleEvent(event);
+            if(event.type == SDL_WINDOWEVENT) {
+                if (event.window.event == SDL_WINDOWEVENT_RESIZED || event.window.event == SDL_WINDOWEVENT_SIZE_CHANGED) {
+                    ui.onWindowResize(event.window.data1, event.window.data2);
+                }
+            }
             if(event.type == SDL_KEYDOWN){
+                if(event.key.keysym.sym == SDLK_F11) {
+                    SDL_Window* win = SDL_GetWindowFromID(event.window.windowID);
+                    if(win) SDL_SetWindowFullscreen(win, (SDL_GetWindowFlags(win) & SDL_WINDOW_FULLSCREEN_DESKTOP) ? 0 : SDL_WINDOW_FULLSCREEN_DESKTOP);
+                }
                 if(event.key.keysym.sym == SDLK_UP) {
                     selection--;
                     if(selection < 0) selection = (int)games.size() - 1;
@@ -236,7 +239,16 @@ std::string run_menu(SDL_Renderer* renderer, RetroComputerUI& ui, SDL_Texture* c
         while(SDL_PollEvent(&event)){
             if(event.type == SDL_QUIT) { app_running = false; return "QUIT"; }
             ui.handleEvent(event);
+            if(event.type == SDL_WINDOWEVENT) {
+                if (event.window.event == SDL_WINDOWEVENT_RESIZED || event.window.event == SDL_WINDOWEVENT_SIZE_CHANGED) {
+                    ui.onWindowResize(event.window.data1, event.window.data2);
+                }
+            }
             if(event.type == SDL_KEYDOWN){
+                if(event.key.keysym.sym == SDLK_F11) {
+                    SDL_Window* win = SDL_GetWindowFromID(event.window.windowID);
+                    if(win) SDL_SetWindowFullscreen(win, (SDL_GetWindowFlags(win) & SDL_WINDOW_FULLSCREEN_DESKTOP) ? 0 : SDL_WINDOW_FULLSCREEN_DESKTOP);
+                }
                 if(event.key.keysym.sym == SDLK_UP) {
                     selection--;
                     if(selection < 0) selection = (int)games.size() - 1;
@@ -294,7 +306,16 @@ bool show_popup(SDL_Renderer* renderer, const std::string& rom_name, RetroComput
         while(SDL_PollEvent(&event)){
             if(event.type == SDL_QUIT) { app_running = false; return false; }
             ui.handleEvent(event);
+            if(event.type == SDL_WINDOWEVENT) {
+                if (event.window.event == SDL_WINDOWEVENT_RESIZED || event.window.event == SDL_WINDOWEVENT_SIZE_CHANGED) {
+                    ui.onWindowResize(event.window.data1, event.window.data2);
+                }
+            }
             if(event.type == SDL_KEYDOWN){
+                if(event.key.keysym.sym == SDLK_F11) {
+                    SDL_Window* win = SDL_GetWindowFromID(event.window.windowID);
+                    if(win) SDL_SetWindowFullscreen(win, (SDL_GetWindowFlags(win) & SDL_WINDOW_FULLSCREEN_DESKTOP) ? 0 : SDL_WINDOW_FULLSCREEN_DESKTOP);
+                }
                 if(event.key.keysym.sym == SDLK_ESCAPE) {
                     return false;
                 }
@@ -428,7 +449,7 @@ int main(int argc, char** argv){
     if(audio_device == 0) std::cerr << "Failed to open audio: " << SDL_GetError() << std::endl;
     else SDL_PauseAudioDevice(audio_device, 0);
 
-    SDL_Window* window = SDL_CreateWindow("Chip-8 Emulator", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, WINDOW_W, WINDOW_H, SDL_WINDOW_SHOWN);
+    SDL_Window* window = SDL_CreateWindow("Chip-8 Emulator", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, WINDOW_W, WINDOW_H, SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE);
     SDL_Renderer* renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_TARGETTEXTURE);
 
     RetroComputerUI ui;
@@ -571,12 +592,21 @@ int main(int argc, char** argv){
                 if(event.type == SDL_QUIT) { running = false; app_running = false; }
                 
                 ui.handleEvent(event); 
+                if(event.type == SDL_WINDOWEVENT) {
+                    if (event.window.event == SDL_WINDOWEVENT_RESIZED || event.window.event == SDL_WINDOWEVENT_SIZE_CHANGED) {
+                        ui.onWindowResize(event.window.data1, event.window.data2);
+                    }
+                }
                 
                 if(event.type == SDL_MOUSEBUTTONDOWN && event.button.button == SDL_BUTTON_LEFT){
                     ui.setComputerTheme(handle_color_selector_click(event.button.x, event.button.y, ui.getComputerTheme()));
                 }
 
                 if(event.type == SDL_KEYDOWN){
+                    if(event.key.keysym.sym == SDLK_F11) {
+                        SDL_Window* win = SDL_GetWindowFromID(event.window.windowID);
+                        if(win) SDL_SetWindowFullscreen(win, (SDL_GetWindowFlags(win) & SDL_WINDOW_FULLSCREEN_DESKTOP) ? 0 : SDL_WINDOW_FULLSCREEN_DESKTOP);
+                    }
                     if(event.key.keysym.sym == SDLK_ESCAPE) {
                         running = false;
                     }
