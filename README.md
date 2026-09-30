@@ -3,7 +3,7 @@
 A C++/SDL2 CHIP-8 emulator presented as a retro-computer experience. The project contains the CHIP-8 virtual machine, SDL2 graphics/audio, ROMs, save-state support, and a custom `RetroComputerUI` that presents the emulator through a physical-looking 3D pixel-art computer interface.
 
 ## Demo
-<video src="https://github.com/amalkphilip/Paruppuvada/raw/main/demo.mp4" width="100%" controls="controls"></video>
+<video src="https://github.com/amalkphilip/Paruppuvada/blob/main/demo.mp4?raw=true" controls="controls" style="max-width: 100%;"></video>
 
 ## Overview
 
