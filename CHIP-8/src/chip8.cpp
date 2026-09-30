@@ -284,12 +284,14 @@ void Chip8::emulate_cycle(){
                     for(int i=0; i<=((opcode & 0x0F00) >> 8); i++){
                         memory[index+i] = v[i];
                     }
+                    index += ((opcode & 0x0F00) >> 8) + 1; // Increment index
                     pc += 2;
                     break;
                 case 0x0065: // FX65 - Fill v[0] to v[x] from memory starting at index
                     for(int i=0; i<=((opcode & 0x0F00) >> 8); i++){
                         v[i] = memory[index+i];
                     }
+                    index += ((opcode & 0x0F00) >> 8) + 1; // Increment index
                     pc += 2;
                     break;
                 default:

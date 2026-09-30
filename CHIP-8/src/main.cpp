@@ -143,10 +143,8 @@ int main(int argc, char** argv){
         chip8.update_timers();
         beeping = (chip8.get_sound_timer() > 0);
 
-        if(chip8.draw_flag){
-            draw_graphics(renderer, chip8);
-            chip8.draw_flag = false;
-        }
+        draw_graphics(renderer, chip8);
+        chip8.draw_flag = false;
 
         SDL_Delay(16); // ~60 FPS
     }
