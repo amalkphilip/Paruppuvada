@@ -1,4 +1,4 @@
-#include "chip8.h"
+﻿#include "chip8.h"
 #include <cstdint>
 #include <fstream>
 #include <iostream>
@@ -44,6 +44,11 @@ void Chip8::initialise(){
     delay_timer = 0;
     sound_timer = 0;
     draw_flag = false;
+    game_over = false;
+}
+
+void Chip8::reset(){
+    initialise();
 }
 
 void Chip8::load_fonts(){
@@ -66,14 +71,31 @@ void Chip8::load_rom(const std::string& filename){
         size = 4096-512;
     }
 
-    file.read((char*)(memory+512),size);
+    file.read((char*)(memory+512), size);
     file.close();
+    current_rom = filename;
 
     std::cout << "Loaded ROM: " << filename << std::endl;
 }
 
 void Chip8::emulate_cycle(){
-    opcode = memory[pc] << 8 | memory[pc+1]; // 16-bit instruction
+    // Check for Tetris game-over (top-out): when pieces reach top row <= 3
+    if (current_rom.find("Tetris") != std::string::npos || current_rom.find("tetris") != std::string::npos) {
+        if ((pc == 0x234 || pc == 0x236) && v[1] <= 3) {
+            game_over = true;
+            return;
+        }
+    }
+
+    // Check for Blinky game-over: all lives lost and game-over score screen reached
+    if (current_rom.find("Blinky") != std::string::npos || current_rom.find("blinky") != std::string::npos) {
+        if (pc == 0x348 || pc == 0x350) {
+            game_over = true;
+            return;
+        }
+    }
+
+    opcode = (memory[pc] << 8) | memory[pc+1]; // 16-bit instruction
 
     switch(opcode & 0xF000){ // Gets only the first 4 bits
         case 0x0000:
@@ -101,7 +123,7 @@ void Chip8::emulate_cycle(){
             sp++;
             pc = opcode & 0x0FFF;
             break;
-        case 0x3000: // 3XNN = Skip next instruction if v[x] = NN
+        case 0x3000: // 3XNN = Skip next instruction if v[x] == NN
             if(v[(opcode & 0x0F00) >> 8] == (opcode & 0x00FF)) pc += 4;
             else pc += 2;
             break;
@@ -113,70 +135,73 @@ void Chip8::emulate_cycle(){
             if (v[(opcode & 0x0F00) >> 8] == v[(opcode & 0x00F0) >> 4]) pc += 4;
             else pc += 2;
             break;
-        case 0x6000: // 6XNN = set v[n] = NN
+        case 0x6000: // 6XNN = set v[x] = NN
             v[(opcode & 0x0F00) >> 8] = opcode & 0x00FF;
             pc += 2;
             break;
-        case 0x7000: //7XNN = add NN to v[x]
+        case 0x7000: // 7XNN = add NN to v[x]
             v[(opcode & 0x0F00) >> 8] += opcode & 0x00FF;
             pc += 2;
             break;
         case 0x8000: // Arithmetic operations
-            switch(opcode & 0x000F){ // Look only at last 4 bits
-                // Instruction is of the form 8XYN
+            switch(opcode & 0x000F){
                 case 0x0000: // v[x] = v[y]
                     v[(opcode & 0x0F00) >> 8] = v[(opcode & 0x00F0) >> 4];
                     pc += 2;
                     break;
-                case 0x0001: // v[x] = v[x] | v[y]
+                case 0x0001: // v[x] |= v[y]
                     v[(opcode & 0x0F00) >> 8] |= v[(opcode & 0x00F0) >> 4];
                     pc += 2;
                     break;
-                case 0x0002: // v[x] = v[y] & v[y]
+                case 0x0002: // v[x] &= v[y]
                     v[(opcode & 0x0F00) >> 8] &= v[(opcode & 0x00F0) >> 4];
                     pc += 2;
                     break;
-                case 0x0003: // v[x] = v[y] ^ v[y]
+                case 0x0003: // v[x] ^= v[y]
                     v[(opcode & 0x0F00) >> 8] ^= v[(opcode & 0x00F0) >> 4];
                     pc += 2;
                     break;
                 case 0x0004:{ // v[x] += v[y], v[F] = carry
-                    uint16_t sum = v[(opcode & 0x0F00) >> 8] + v[(opcode & 0x00F0) >> 4];
-                    v[(opcode & 0x0F00) >> 8] = sum & 0xFF;   
-                    v[0xF] = (sum > 0xFF) ? 1: 0;   
+                    uint8_t vx = v[(opcode & 0x0F00) >> 8];
+                    uint8_t vy = v[(opcode & 0x00F0) >> 4];
+                    uint16_t sum = vx + vy;
+                    v[(opcode & 0x0F00) >> 8] = sum & 0xFF;
+                    v[0xF] = (sum > 0xFF) ? 1 : 0;
                     pc += 2;          
                 }
                     break;
                 case 0x0005:{ // v[x] -= v[y], v[F] = NOT(borrow)
-                    uint8_t flag = (v[(opcode & 0x0F00) >> 8] >= v[(opcode & 0x00F0) >> 4]) ? 1 : 0;
-                    v[(opcode & 0x0F00) >> 8] -= v[(opcode & 0x00F0) >> 4];
-                    v[0xF] = flag;
+                    uint8_t vx = v[(opcode & 0x0F00) >> 8];
+                    uint8_t vy = v[(opcode & 0x00F0) >> 4];
+                    v[(opcode & 0x0F00) >> 8] = vx - vy;
+                    v[0xF] = (vx >= vy) ? 1 : 0;
                     pc += 2;
-                    break;
                 }
+                    break;
                 case 0x0006:{ // v[x] >>= 1, v[F] = LSB
                     if(quirk_shift_vy) v[(opcode & 0x0F00) >> 8] = v[(opcode & 0x00F0) >> 4];
                     uint8_t flag = v[(opcode & 0x0F00) >> 8] & 0x1;
                     v[(opcode & 0x0F00) >> 8] >>= 1;
                     v[0xF] = flag;
                     pc += 2;
-                    break;
                 }
+                    break;
                 case 0x0007:{ // v[x] = v[y] - v[x], v[F] = NOT(borrow)
-                    uint8_t flag = (v[(opcode & 0x00F0) >> 4] >= v[(opcode & 0x0F00) >> 8]) ? 1 : 0;
-                    v[(opcode & 0x0F00) >> 8] = v[(opcode & 0x00F0) >> 4] - v[(opcode & 0x0F00) >> 8];
-                    v[0xF] = flag;
+                    uint8_t vx = v[(opcode & 0x0F00) >> 8];
+                    uint8_t vy = v[(opcode & 0x00F0) >> 4];
+                    v[(opcode & 0x0F00) >> 8] = vy - vx;
+                    v[0xF] = (vy >= vx) ? 1 : 0;
                     pc += 2;
-                    break;
                 }
+                    break;
                 case 0x000E:{ // v[x] <<= 1, v[F] = MSB
                     if(quirk_shift_vy) v[(opcode & 0x0F00) >> 8] = v[(opcode & 0x00F0) >> 4];
-                    uint8_t flag = v[(opcode & 0x0F00) >> 8] >> 7;  // Save MSB
+                    uint8_t flag = (v[(opcode & 0x0F00) >> 8] >> 7) & 0x1;
                     v[(opcode & 0x0F00) >> 8] <<= 1;
                     v[0xF] = flag;
                     pc += 2;
-                    break;
                 }
+                    break;
                 default:
                     std::cerr << "Unknown opcode: 0x" << std::hex << opcode << std::endl;
                     pc += 2;
@@ -194,7 +219,7 @@ void Chip8::emulate_cycle(){
             pc += 2;
             break;
         case 0xB000: // BXXX = jump to address XXX + v[0]
-            pc = (opcode & 0xFFF) + v[0];
+            pc = (opcode & 0x0FFF) + v[0];
             break;
         case 0xC000:{  // CXNN - v[x] = random_byte & NN
             static std::random_device rd;
@@ -212,19 +237,16 @@ void Chip8::emulate_cycle(){
             // Looping through each row of the sprite
             for(int y_line=0; y_line<height; y_line++){
                 pixel = memory[index + y_line]; // One row of sprite data
-                // Now looping through each pixel in the row (8)
                 for(int x_line=0; x_line<8; x_line++){
                     // Check if current pixel is 1
                     if((pixel & (0x80 >> x_line)) != 0){
                         int screen_x = (x & 63) + x_line, screen_y = (y & 31) + y_line;
                         if (screen_x >= 64 || screen_y >= 32) continue;
+
                         int screen_index = screen_x + (screen_y*64); // 1D display array
                         // Checking for collision
                         if(display[screen_index] == 1) v[0xF] = 1; // Set collision flag
-                        // We now flip the pixel
                         display[screen_index] ^= 1;
-
-
                     }
                 }
             }
@@ -319,7 +341,6 @@ void Chip8::emulate_cycle(){
 void Chip8::update_timers(){
     if(delay_timer > 0) delay_timer--;
     if(sound_timer > 0){
-        if(sound_timer == 1) std::cout << "BEEP!" << std::endl;
         sound_timer--;
     }
 }

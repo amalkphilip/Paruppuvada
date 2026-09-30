@@ -1,4 +1,4 @@
-#include "chip8.h"
+﻿#include "chip8.h"
 #include "retro_computer.h"
 #include <SDL2/SDL.h>
 #include <iostream>
@@ -25,7 +25,7 @@ SDL_Keycode keymap[16] = {
 void audio_callback(void* userdata, uint8_t* stream, int len){
     static uint32_t sample_index = 0;
     int16_t* audio_buffer = (int16_t*) stream;
-    int samples = len/2;
+    int samples = len / 2;
     bool* beeping = (bool*) userdata;
     for(int i=0; i<samples; i++){
         if(*beeping){
@@ -74,17 +74,28 @@ void handle_speed_keys(const SDL_Event& event, RetroComputerUI& ui) {
     }
 }
 
-void handle_input(Chip8& chip8, bool& running, RetroComputerUI& ui){
+void handle_input(Chip8& chip8, bool& running, RetroComputerUI& ui, bool& restart_requested){
     SDL_Event event;
     while(SDL_PollEvent(&event)){
         ui.handleEvent(event); // GUI handles virtual mouse clicks
         handle_speed_keys(event, ui);
         
-        if(event.type == SDL_QUIT) running = false;
+        if(event.type == SDL_QUIT) {
+            running = false;
+        }
         if(event.type == SDL_KEYDOWN){
-            if(event.key.keysym.sym == SDLK_ESCAPE) running = false;
-            if(event.key.keysym.sym == SDLK_F5 || event.key.keysym.sym == SDLK_s) ui.setVirtualKeyPressed(18, true);
-            if(event.key.keysym.sym == SDLK_F9 || event.key.keysym.sym == SDLK_l) ui.setVirtualKeyPressed(19, true);
+            if(event.key.keysym.sym == SDLK_ESCAPE) {
+                running = false; // Back to menu
+            }
+            if(event.key.keysym.sym == SDLK_r) {
+                restart_requested = true;
+            }
+            if(event.key.keysym.sym == SDLK_F5) {
+                ui.setVirtualKeyPressed(18, true);
+            }
+            if(event.key.keysym.sym == SDLK_F9) {
+                ui.setVirtualKeyPressed(19, true);
+            }
             
             for(int i=0; i<16; i++){
                 bool is_mapped = (event.key.keysym.sym == keymap[i]);
@@ -101,8 +112,8 @@ void handle_input(Chip8& chip8, bool& running, RetroComputerUI& ui){
             }
         }
         if(event.type == SDL_KEYUP){
-            if(event.key.keysym.sym == SDLK_F5 || event.key.keysym.sym == SDLK_s) ui.setVirtualKeyPressed(18, false);
-            if(event.key.keysym.sym == SDLK_F9 || event.key.keysym.sym == SDLK_l) ui.setVirtualKeyPressed(19, false);
+            if(event.key.keysym.sym == SDLK_F5) ui.setVirtualKeyPressed(18, false);
+            if(event.key.keysym.sym == SDLK_F9) ui.setVirtualKeyPressed(19, false);
             
             for(int i=0; i<16; i++){
                 bool is_mapped = (event.key.keysym.sym == keymap[i]);
@@ -158,7 +169,7 @@ std::string show_load_menu(SDL_Renderer* renderer, RetroComputerUI& ui, SDL_Text
             if(event.type == SDL_KEYDOWN){
                 if(event.key.keysym.sym == SDLK_UP) {
                     selection--;
-                    if(selection < 0) selection = games.size() - 1;
+                    if(selection < 0) selection = (int)games.size() - 1;
                 }
                 else if(event.key.keysym.sym == SDLK_DOWN) {
                     selection++;
@@ -239,7 +250,7 @@ std::string run_menu(SDL_Renderer* renderer, RetroComputerUI& ui, SDL_Texture* c
             if(event.type == SDL_KEYDOWN){
                 if(event.key.keysym.sym == SDLK_UP) {
                     selection--;
-                    if(selection < 0) selection = games.size() - 1;
+                    if(selection < 0) selection = (int)games.size() - 1;
                 }
                 else if(event.key.keysym.sym == SDLK_DOWN) {
                     selection++;
@@ -305,7 +316,12 @@ bool show_popup(SDL_Renderer* renderer, const std::string& rom_name, RetroComput
             handle_speed_keys(event, ui);
             if(event.type == SDL_QUIT) return false;
             if(event.type == SDL_KEYDOWN){
-                if(event.key.keysym.sym == SDLK_ESCAPE || event.key.keysym.sym == SDLK_RETURN || event.key.keysym.sym == SDLK_SPACE) return true;
+                if(event.key.keysym.sym == SDLK_ESCAPE) {
+                    return false; // Back to menu
+                }
+                if(event.key.keysym.sym == SDLK_RETURN || event.key.keysym.sym == SDLK_SPACE) {
+                    return true;  // Launch game
+                }
             }
         }
         
@@ -314,37 +330,39 @@ bool show_popup(SDL_Renderer* renderer, const std::string& rom_name, RetroComput
         SDL_RenderClear(renderer);
         SDL_SetRenderDrawColor(renderer, 0x8F, 0xEA, 0x9B, 255); // Bright green phosphor text
         
-        SDL_Rect border = { 50, 30, CRT_WIDTH - 100, CRT_HEIGHT - 60 };
+        SDL_Rect border = { 30, 20, CRT_WIDTH - 60, CRT_HEIGHT - 40 };
         SDL_RenderDrawRect(renderer, &border);
         border.x += 2; border.y += 2; border.w -= 4; border.h -= 4;
         SDL_RenderDrawRect(renderer, &border);
         
-        rcui::drawText(renderer, "[X] ESC TO CLOSE", CRT_WIDTH - 200, 40, 2);
+        rcui::drawText(renderer, "ESC: BACK", CRT_WIDTH - 150, 30, 2);
         
         if (base_name.find("TETRIS") != std::string::npos) {
-            rcui::drawText(renderer, "- TETRIS CONTROLS -", CRT_WIDTH/2 - (19*12)/2, 70, 3);
-            rcui::drawText(renderer, "W   ROTATE", 150, 140, 3);
-            rcui::drawText(renderer, "A   LEFT", 150, 180, 3);
-            rcui::drawText(renderer, "D   RIGHT", 350, 140, 3);
-            rcui::drawText(renderer, "S   DROP", 350, 180, 3);
+            rcui::drawText(renderer, "- TETRIS CONTROLS -", CRT_WIDTH/2 - (19*12)/2, 45, 3);
+            rcui::drawText(renderer, "W / UP ARROW     ROTATE", 100, 95, 2);
+            rcui::drawText(renderer, "A / LEFT ARROW   MOVE LEFT", 100, 125, 2);
+            rcui::drawText(renderer, "D / RIGHT ARROW  MOVE RIGHT", 100, 155, 2);
+            rcui::drawText(renderer, "S / DOWN / SPACE DROP", 100, 185, 2);
         } else if (base_name.find("PONG") != std::string::npos) {
-            rcui::drawText(renderer, "- PONG CONTROLS -", CRT_WIDTH/2 - (17*12)/2, 70, 3);
-            rcui::drawText(renderer, "PLAYER 1:", 100, 130, 3);
-            rcui::drawText(renderer, "UP   DOWN", 100, 170, 2);
-            rcui::drawText(renderer, "ARROW KEYS", 100, 200, 2);
-            rcui::drawText(renderer, "PLAYER 2:", 350, 130, 3);
-            rcui::drawText(renderer, "NUM8 NUM2", 350, 170, 2);
+            rcui::drawText(renderer, "- PONG CONTROLS -", CRT_WIDTH/2 - (17*12)/2, 45, 3);
+            rcui::drawText(renderer, "PLAYER 1: UP / DOWN  or  W / S", 80, 105, 2);
+            rcui::drawText(renderer, "PLAYER 2: NUM8 / NUM2  or  I / K", 80, 145, 2);
         } else if (base_name.find("BLINKY") != std::string::npos) {
-            rcui::drawText(renderer, "- BLINKY CONTROLS -", CRT_WIDTH/2 - (19*12)/2, 70, 3);
-            rcui::drawText(renderer, "USE THE", 200, 140, 4);
-            rcui::drawText(renderer, "ARROW KEYS", 200, 200, 4);
+            rcui::drawText(renderer, "- BLINKY (PAC-MAN) CONTROLS -", CRT_WIDTH/2 - (29*12)/2, 45, 3);
+            rcui::drawText(renderer, "ARROWS  or  WASD  : MOVE PAC-MAN", 90, 100, 2);
+            rcui::drawText(renderer, "SPACE   or  1     : START / PAUSE", 90, 135, 2);
+            rcui::drawText(renderer, "MAZE GENERATES AT START (~8 SEC)", 90, 170, 2);
         } else {
-            rcui::drawText(renderer, "- DEFAULT CONTROLS -", CRT_WIDTH/2 - (20*12)/2, 50, 3);
-            rcui::drawText(renderer, "ARROWS / 2468   MOVE", 80, 100, 3);
-            rcui::drawText(renderer, "SPACE  / 5      ACTION", 80, 140, 3);
-            rcui::drawText(renderer, "+ / -           SPEED", 80, 180, 3);
-            rcui::drawText(renderer, "1-4,Q-R,A-F,Z-V FULL MAP", 80, 220, 2);
+            rcui::drawText(renderer, "- CONTROLS -", CRT_WIDTH/2 - (12*12)/2, 45, 3);
+            rcui::drawText(renderer, "ARROWS / 2468   MOVE", 100, 100, 2);
+            rcui::drawText(renderer, "SPACE  / 5      ACTION", 100, 135, 2);
+            rcui::drawText(renderer, "1-4,Q-R,A-F,Z-V FULL MAP", 100, 170, 2);
         }
+
+        rcui::drawText(renderer, "R: RESTART GAME AT ANY TIME", CRT_WIDTH/2 - (27*8)/2, 215, 2);
+        rcui::drawText(renderer, "SPEED: [+] FASTER   [-] SLOWER", CRT_WIDTH/2 - (30*8)/2, 240, 2);
+        rcui::drawText(renderer, "PRESS ENTER OR SPACE TO START", CRT_WIDTH/2 - (29*8)/2, 270, 2);
+
         SDL_SetRenderTarget(renderer, nullptr);
 
         ui.setSpeedLevel(cycles_per_frame);
@@ -426,8 +444,8 @@ int main(int argc, char** argv){
         }
 
         if (!show_popup(renderer, current_rom_path, ui, crt_tex)) {
-            app_running = false;
-            break; 
+            if(argc >= 2) app_running = false;
+            continue; // Return to menu
         }
 
         keymap[0] = SDLK_x; keymap[1] = SDLK_1; keymap[2] = SDLK_2; keymap[3] = SDLK_3;
@@ -435,7 +453,7 @@ int main(int argc, char** argv){
         keymap[8] = SDLK_s; keymap[9] = SDLK_d; keymap[10] = SDLK_z; keymap[11] = SDLK_c;
         keymap[12] = SDLK_4; keymap[13] = SDLK_r; keymap[14] = SDLK_f; keymap[15] = SDLK_v;
 
-        std::string base_name = rom_to_load;
+        std::string base_name = current_rom_path;
         size_t slash = base_name.find_last_of("/\\");
         if(slash != std::string::npos) base_name = base_name.substr(slash + 1);
         std::transform(base_name.begin(), base_name.end(), base_name.begin(), ::toupper);
@@ -446,6 +464,13 @@ int main(int argc, char** argv){
             keymap[1] = SDLK_UP; keymap[4] = SDLK_DOWN; keymap[0xC] = SDLK_KP_8; keymap[0xD] = SDLK_KP_2;
         } else if (base_name.find("BLINKY") != std::string::npos) {
             keymap[3] = SDLK_UP; keymap[6] = SDLK_DOWN; keymap[7] = SDLK_LEFT; keymap[8] = SDLK_RIGHT;
+        }
+
+        // Optimal default speed per game:
+        // Blinky (CHIP-48) needs ~25 cycles/frame for smooth arcade speed
+        cycles_per_frame = 10;
+        if (base_name.find("BLINKY") != std::string::npos) {
+            cycles_per_frame = 25;
         }
 
         Chip8 chip8;
@@ -471,26 +496,46 @@ int main(int argc, char** argv){
         ui.setKeyCallback(on_virtual_key, &chip8);
         
         bool running = true;
+        bool restart_requested = false;
+
         while(running){
-            handle_input(chip8, running, ui);
-            for(int i=0; i<cycles_per_frame; i++){
-                uint16_t current_pc = chip8.get_pc();
-                uint16_t opcode = (chip8.get_memory(current_pc) << 8) | chip8.get_memory(current_pc + 1);
-                
-                chip8.emulate_cycle();
-                
-                // Classic CHIP-8 games end by entering an infinite jump-to-self loop.
-                // If PC didn't advance and we aren't waiting for a key press (Fx0A), the game is over.
-                if (chip8.get_pc() == current_pc && (opcode & 0xF0FF) != 0xF00A) {
-                    running = false;
-                    break;
-                }
+            handle_input(chip8, running, ui, restart_requested);
+            if(restart_requested){
+                std::cout << "[System] Restarting game: " << current_rom_path << std::endl;
+                chip8.reset();
+                if(is_loading_state) chip8.load_state(rom_to_load);
+                else chip8.load_rom(current_rom_path);
+                restart_requested = false;
+                continue;
             }
-            chip8.update_timers();
-            beeping = (chip8.get_sound_timer() > 0);
+
+            if(!chip8.is_game_over()){
+                for(int i=0; i<cycles_per_frame; i++){
+                    uint16_t current_pc = chip8.get_pc();
+                    uint16_t opcode = (chip8.get_memory(current_pc) << 8) | chip8.get_memory(current_pc + 1);
+                    
+                    chip8.emulate_cycle();
+                    
+                    // Classic CHIP-8 games end by entering an infinite jump-to-self loop.
+                    // If PC didn't advance and we aren't waiting for a key press (Fx0A), the game is over.
+                    if (chip8.get_pc() == current_pc && (opcode & 0xF0FF) != 0xF00A) {
+                        break;
+                    }
+                    if(chip8.is_game_over()) break;
+                }
+                chip8.update_timers();
+                beeping = (chip8.get_sound_timer() > 0);
+            } else {
+                beeping = false;
+            }
 
             SDL_SetRenderTarget(renderer, crt_tex);
             draw_graphics(renderer, chip8.display);
+            if(chip8.is_game_over()){
+                // Draw Game Over overlay on CRT screen
+                rcui::drawText(renderer, "- GAME OVER -", CRT_WIDTH/2 - (13*16)/2, CRT_HEIGHT/2 - 20, 4);
+                rcui::drawText(renderer, "PRESS R TO REPLAY  ESC TO MENU", CRT_WIDTH/2 - (30*8)/2, CRT_HEIGHT/2 + 30, 2);
+            }
             SDL_SetRenderTarget(renderer, nullptr);
 
             ui.setSpeedLevel(cycles_per_frame);

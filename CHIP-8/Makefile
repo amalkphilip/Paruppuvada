@@ -1,6 +1,6 @@
-CXX = g++
+﻿CXX = g++
 CXXFLAGS = -std=c++17 -Wall -Wextra -O2
-TARGET = chip8
+TARGET = chip8.exe
 SOURCES = src/main.cpp src/chip8.cpp src/retro_computer.cpp
 OBJECTS = $(SOURCES:.cpp=.o)
 
@@ -13,6 +13,6 @@ $(TARGET): $(OBJECTS)
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
 clean:
-	rm -f $(OBJECTS) $(TARGET)
+	rm -f $(OBJECTS) $(TARGET) chip8 chip8.exe
 
 .PHONY: all clean
