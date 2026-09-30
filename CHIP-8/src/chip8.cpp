@@ -62,8 +62,8 @@ void Chip8::load_rom(const std::string& filename){
     file.seekg(0, std::ios::beg);
 
     if(size > (4096-512)){ // 512 reserved for fonts/interpreter
-        std::cerr << "ROM too large to fit in memory" << std::endl;
-        return;
+        std::cerr << "Warning: ROM too large to fit in memory, truncating to 3584 bytes." << std::endl;
+        size = 4096-512;
     }
 
     file.read((char*)(memory+512),size);
@@ -142,31 +142,41 @@ void Chip8::emulate_cycle(){
                     break;
                 case 0x0004:{ // v[x] += v[y], v[F] = carry
                     uint16_t sum = v[(opcode & 0x0F00) >> 8] + v[(opcode & 0x00F0) >> 4];
-                    v[0xF] = (sum > 0xFF) ? 1: 0;   
                     v[(opcode & 0x0F00) >> 8] = sum & 0xFF;   
+                    v[0xF] = (sum > 0xFF) ? 1: 0;   
                     pc += 2;          
                 }
                     break;
-                case 0x0005: // v[x] -= v[y], v[F] = NOT(borrow)
-                    v[0xF] = (v[(opcode & 0x0F00) >> 8] >= v[(opcode & 0x00F0) >> 4]) ? 1 : 0;
+                case 0x0005:{ // v[x] -= v[y], v[F] = NOT(borrow)
+                    uint8_t flag = (v[(opcode & 0x0F00) >> 8] >= v[(opcode & 0x00F0) >> 4]) ? 1 : 0;
                     v[(opcode & 0x0F00) >> 8] -= v[(opcode & 0x00F0) >> 4];
+                    v[0xF] = flag;
                     pc += 2;
                     break;
-                case 0x0006: // v[x] >>= 1, v[F] = LSB
-                    v[0xF] = v[(opcode & 0x0F00) >> 8] & 0x1;
+                }
+                case 0x0006:{ // v[x] >>= 1, v[F] = LSB
+                    if(quirk_shift_vy) v[(opcode & 0x0F00) >> 8] = v[(opcode & 0x00F0) >> 4];
+                    uint8_t flag = v[(opcode & 0x0F00) >> 8] & 0x1;
                     v[(opcode & 0x0F00) >> 8] >>= 1;
+                    v[0xF] = flag;
                     pc += 2;
                     break;
-                case 0x0007: // v[x] = v[y] - v[x], v[F] = NOT(borrow)
-                    v[0xF] = (v[(opcode & 0x00F0) >> 4] >= v[(opcode & 0x0F00) >> 8]) ? 1 : 0;
+                }
+                case 0x0007:{ // v[x] = v[y] - v[x], v[F] = NOT(borrow)
+                    uint8_t flag = (v[(opcode & 0x00F0) >> 4] >= v[(opcode & 0x0F00) >> 8]) ? 1 : 0;
                     v[(opcode & 0x0F00) >> 8] = v[(opcode & 0x00F0) >> 4] - v[(opcode & 0x0F00) >> 8];
+                    v[0xF] = flag;
                     pc += 2;
                     break;
-                case 0x000E: // v[x] <<= 1, v[F] = MSB
-                    v[0xF] = v[(opcode & 0x0F00) >> 8] >> 7;  // Save MSB
+                }
+                case 0x000E:{ // v[x] <<= 1, v[F] = MSB
+                    if(quirk_shift_vy) v[(opcode & 0x0F00) >> 8] = v[(opcode & 0x00F0) >> 4];
+                    uint8_t flag = v[(opcode & 0x0F00) >> 8] >> 7;  // Save MSB
                     v[(opcode & 0x0F00) >> 8] <<= 1;
+                    v[0xF] = flag;
                     pc += 2;
                     break;
+                }
                 default:
                     std::cerr << "Unknown opcode: 0x" << std::hex << opcode << std::endl;
                     pc += 2;
@@ -284,14 +294,14 @@ void Chip8::emulate_cycle(){
                     for(int i=0; i<=((opcode & 0x0F00) >> 8); i++){
                         memory[index+i] = v[i];
                     }
-                    index += ((opcode & 0x0F00) >> 8) + 1; // Increment index
+                    if(quirk_index_increment) index += ((opcode & 0x0F00) >> 8) + 1;
                     pc += 2;
                     break;
                 case 0x0065: // FX65 - Fill v[0] to v[x] from memory starting at index
                     for(int i=0; i<=((opcode & 0x0F00) >> 8); i++){
                         v[i] = memory[index+i];
                     }
-                    index += ((opcode & 0x0F00) >> 8) + 1; // Increment index
+                    if(quirk_index_increment) index += ((opcode & 0x0F00) >> 8) + 1;
                     pc += 2;
                     break;
                 default:
@@ -312,4 +322,18 @@ void Chip8::update_timers(){
         if(sound_timer == 1) std::cout << "BEEP!" << std::endl;
         sound_timer--;
     }
+}
+
+bool Chip8::save_state(const std::string& filename) {
+    std::ofstream out(filename, std::ios::binary);
+    if (!out) return false;
+    out.write((char*)this, sizeof(*this));
+    return true;
+}
+
+bool Chip8::load_state(const std::string& filename) {
+    std::ifstream in(filename, std::ios::binary);
+    if (!in) return false;
+    in.read((char*)this, sizeof(*this));
+    return true;
 }
