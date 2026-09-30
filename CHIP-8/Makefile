@@ -7,7 +7,7 @@ OBJECTS = $(SOURCES:.cpp=.o)
 all: $(TARGET)
 
 $(TARGET): $(OBJECTS)
-	$(CXX) $(CXXFLAGS) -o $(TARGET) $(OBJECTS) -lSDL2
+	$(CXX) $(CXXFLAGS) -o $(TARGET) $(OBJECTS) -lmingw32 -lSDL2main -lSDL2
 
 %.o: %.cpp
 	$(CXX) $(CXXFLAGS) -c $< -o $@
