@@ -640,6 +640,11 @@ int main(int argc, char** argv){
                             ui.setVirtualKeyPressed(i, true);
                         }
                     }
+                    if(event.key.keysym.sym == SDLK_UP) ui.setVirtualKeyPressed(retro_gui::VirtualKey::ARROW_UP, true);
+                    if(event.key.keysym.sym == SDLK_DOWN) ui.setVirtualKeyPressed(retro_gui::VirtualKey::ARROW_DOWN, true);
+                    if(event.key.keysym.sym == SDLK_LEFT) ui.setVirtualKeyPressed(retro_gui::VirtualKey::ARROW_LEFT, true);
+                    if(event.key.keysym.sym == SDLK_RIGHT) ui.setVirtualKeyPressed(retro_gui::VirtualKey::ARROW_RIGHT, true);
+                    if(event.key.keysym.sym == SDLK_SPACE) ui.setVirtualKeyPressed(retro_gui::VirtualKey::SPACE, true);
                 }
                 if(event.type == SDL_KEYUP){
                     for(int i=0; i<16; i++){
@@ -655,6 +660,11 @@ int main(int argc, char** argv){
                             ui.setVirtualKeyPressed(i, false);
                         }
                     }
+                    if(event.key.keysym.sym == SDLK_UP) ui.setVirtualKeyPressed(retro_gui::VirtualKey::ARROW_UP, false);
+                    if(event.key.keysym.sym == SDLK_DOWN) ui.setVirtualKeyPressed(retro_gui::VirtualKey::ARROW_DOWN, false);
+                    if(event.key.keysym.sym == SDLK_LEFT) ui.setVirtualKeyPressed(retro_gui::VirtualKey::ARROW_LEFT, false);
+                    if(event.key.keysym.sym == SDLK_RIGHT) ui.setVirtualKeyPressed(retro_gui::VirtualKey::ARROW_RIGHT, false);
+                    if(event.key.keysym.sym == SDLK_SPACE) ui.setVirtualKeyPressed(retro_gui::VirtualKey::SPACE, false);
                 }
             }
 

@@ -187,7 +187,7 @@ void RetroComputerUI::computeLayout(int w, int h) {
     lay_.virtualKeys[keyIndex(VirtualKey::ARROW_LEFT)] = R(150, 655, 60, 35);
     lay_.virtualKeys[keyIndex(VirtualKey::ARROW_DOWN)] = R(220, 655, 60, 35);
     lay_.virtualKeys[keyIndex(VirtualKey::ARROW_RIGHT)] = R(290, 655, 60, 35);
-    lay_.virtualKeys[keyIndex(VirtualKey::SPACE)] = R(380, 710, 300, 45);
+    lay_.virtualKeys[keyIndex(VirtualKey::SPACE)] = R(650, 710, 300, 45);
 
     lay_.brandPlate = R(880, 420, 120, 36);
     lay_.cartSlot = R(650, 430, 196, 14);
@@ -808,8 +808,8 @@ void RetroComputerUI::drawKnob(SDL_Point center, int radius, int index, int coun
     setColor(theme_.bodyDark);
     drawFilledCircle(center.x, center.y, std::max(3, static_cast<int>(6 * scale_)));
 
-    const int titleScale = std::max(1, static_cast<int>(2 * scale_));
-    const int valueScale = std::max(1, static_cast<int>(2 * scale_));
+    const int titleScale = std::max(1, static_cast<int>(scale_));
+    const int valueScale = std::max(1, static_cast<int>(scale_));
     if (valueBelow) {
         drawTextCentered(title, center.x,
                          center.y - radius - static_cast<int>(28 * scale_),
@@ -936,10 +936,7 @@ void RetroComputerUI::drawWaveformPanel() {
 
     drawKnob(lay_.soundKnobCenter, lay_.soundKnobRadius,
              static_cast<int>(waveform_), static_cast<int>(Waveform::COUNT),
-             "", waveformName(waveform_), false);
-    drawTextCentered("SOUND", lay_.soundKnobCenter.x,
-                     lay_.soundKnobCenter.y + lay_.soundKnobRadius + 13 * static_cast<int>(scale_),
-                     titleScale, theme_.textMain);
+             "SOUND", waveformName(waveform_), true);
 }
 
 bool RetroComputerUI::isKeyVisuallyActive(int index) const {
