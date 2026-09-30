@@ -481,10 +481,8 @@ bool show_popup(SDL_Renderer* renderer, const std::string& rom_name, RetroComput
             retro_gui::drawPixelText(renderer, "1-4,Q-R,A-F,Z-V FULL MAP", 100, 170, 2);
         }
 
-        retro_gui::drawPixelText(renderer, "ENTER / SPACE  START GAME",    CRT_WIDTH/2 - retro_gui::pixelTextWidth("ENTER / SPACE  START GAME",    2)/2, 195, 2);
-        retro_gui::drawPixelText(renderer, "L              LOAD SAVED GAME",CRT_WIDTH/2 - retro_gui::pixelTextWidth("L              LOAD SAVED GAME",2)/2, 212, 2);
-        retro_gui::drawPixelText(renderer, "R              RESTART ANYTIME", CRT_WIDTH/2 - retro_gui::pixelTextWidth("R              RESTART ANYTIME", 2)/2, 229, 2);
-        retro_gui::drawPixelText(renderer, "[+] FASTER  [-] SLOWER  SPEED",  CRT_WIDTH/2 - retro_gui::pixelTextWidth("[+] FASTER  [-] SLOWER  SPEED",  2)/2, 246, 2);
+        retro_gui::drawPixelText(renderer, "ENTER / SPACE  :  START GAME",  CRT_WIDTH/2 - retro_gui::pixelTextWidth("ENTER / SPACE  :  START GAME",  2)/2, 202, 2);
+        retro_gui::drawPixelText(renderer, "L              :  LOAD SAVED GAME", CRT_WIDTH/2 - retro_gui::pixelTextWidth("L              :  LOAD SAVED GAME", 2)/2, 222, 2);
 
         SDL_SetRenderTarget(renderer, nullptr);
 
