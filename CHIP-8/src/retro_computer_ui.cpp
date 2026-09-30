@@ -961,9 +961,90 @@ void RetroComputerUI::drawWaveformPanel() {
     SDL_RenderDrawLine(ren_, lay_.soundLed.x, lay_.soundLed.y,
                        lay_.soundLed.x + lay_.soundLed.w - 1, lay_.soundLed.y);
 
+    // Draw knob without text value (symbols replace it)
     drawKnob(lay_.soundKnobCenter, lay_.soundKnobRadius,
              static_cast<int>(waveform_), static_cast<int>(Waveform::COUNT),
-             "SOUND", waveformName(waveform_), true);
+             "SOUND", "", false);
+
+    // Draw waveform symbols to the right of the sound knob
+    // Layout: knob center at (940,300), radius 31 -> knob right edge ~971
+    // Symbols are stacked vertically to the right of the knob
+    {
+        const int waveCount = static_cast<int>(Waveform::COUNT);
+        const int symW = static_cast<int>(32 * scale_);  // symbol box width
+        const int symH = static_cast<int>(14 * scale_);  // symbol box height
+        const int symGap = static_cast<int>(6 * scale_); // gap between symbols
+        const int totalH = waveCount * symH + (waveCount - 1) * symGap;
+        const int xLeft = lay_.soundKnobCenter.x + lay_.soundKnobRadius + static_cast<int>(14 * scale_);
+        const int yTop  = lay_.soundKnobCenter.y - totalH / 2;
+
+        for (int wi = 0; wi < waveCount; ++wi) {
+            bool active = (wi == static_cast<int>(waveform_));
+            Color col = active ? theme_.accent : Color{theme_.textMain.r, theme_.textMain.g, theme_.textMain.b, 255};
+            uint8_t alpha = active ? 255 : 120;
+
+            // Glow behind active symbol
+            if (active) {
+                SDL_Rect glowBox{xLeft - static_cast<int>(3*scale_),
+                                 yTop + wi * (symH + symGap) - static_cast<int>(3*scale_),
+                                 symW + static_cast<int>(6*scale_),
+                                 symH + static_cast<int>(6*scale_)};
+                setColor(theme_.accent, 45);
+                SDL_RenderFillRect(ren_, &glowBox);
+            }
+
+            int cx = xLeft;
+            int cy = yTop + wi * (symH + symGap) + symH / 2;
+            int hw = symW;         // half-width span of the symbol
+            int hh = symH / 2 - 1; // half-height of the symbol
+            int lw = std::max(1, static_cast<int>(1.5f * scale_)); // line weight
+
+            setColor(col, alpha);
+
+            Waveform wtype = static_cast<Waveform>(wi);
+            if (wtype == Waveform::SINE) {
+                // Sine wave: smooth S-curve drawn as segments
+                // Draw ~8 segments approximating a sine
+                const int segs = 16;
+                for (int s = 0; s < segs; ++s) {
+                    float t1 = static_cast<float>(s)     / segs;
+                    float t2 = static_cast<float>(s + 1) / segs;
+                    float v1 = -std::sin(t1 * 2.0f * PI);
+                    float v2 = -std::sin(t2 * 2.0f * PI);
+                    int x1 = cx + static_cast<int>(t1 * hw);
+                    int x2 = cx + static_cast<int>(t2 * hw);
+                    int y1 = cy + static_cast<int>(v1 * hh);
+                    int y2 = cy + static_cast<int>(v2 * hh);
+                    thickLine(x1, y1, x2, y2, lw);
+                }
+            } else if (wtype == Waveform::SQUARE) {
+                // Square wave: flat top, vertical edges, flat bottom
+                int qw = hw / 2;
+                // First half: high
+                thickLine(cx,        cy - hh, cx + qw,     cy - hh, lw); // top
+                thickLine(cx,        cy - hh, cx,           cy + hh, lw); // left fall
+                thickLine(cx + qw,   cy - hh, cx + qw,     cy + hh, lw); // mid rise/fall
+                // Second half: low
+                thickLine(cx + qw,   cy + hh, cx + hw,     cy + hh, lw); // bottom
+                thickLine(cx + hw,   cy - hh, cx + hw,     cy + hh, lw); // right edge
+                thickLine(cx + hw,   cy - hh, cx + hw - 1, cy - hh, lw); // tiny top-right cap
+            } else if (wtype == Waveform::TRIANGLE) {
+                // Triangle: /\/
+                int qw = hw / 4;
+                thickLine(cx,          cy,       cx + qw,      cy - hh, lw); // up-slope start
+                thickLine(cx + qw,     cy - hh,  cx + 3 * qw,  cy + hh, lw); // down through center
+                thickLine(cx + 3 * qw, cy + hh,  cx + hw,      cy,      lw); // up-slope end
+            } else if (wtype == Waveform::SAWTOOTH) {
+                // Sawtooth: / drop /
+                int hw2 = hw / 2;
+                // First tooth
+                thickLine(cx,        cy + hh, cx + hw2,    cy - hh, lw); // rise
+                thickLine(cx + hw2,  cy - hh, cx + hw2,    cy + hh, lw); // vertical drop
+                // Second tooth
+                thickLine(cx + hw2,  cy + hh, cx + hw,     cy - hh, lw); // rise
+            }
+        }
+    }
 }
 
 bool RetroComputerUI::isKeyVisuallyActive(int index) const {
