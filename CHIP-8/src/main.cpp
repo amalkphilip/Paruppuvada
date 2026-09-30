@@ -427,24 +427,20 @@ bool show_popup(SDL_Renderer* renderer, const std::string& rom_name, RetroComput
                     if(win) SDL_SetWindowFullscreen(win, (SDL_GetWindowFlags(win) & SDL_WINDOW_FULLSCREEN_DESKTOP) ? 0 : SDL_WINDOW_FULLSCREEN_DESKTOP);
                 }
                 if(event.key.keysym.sym == SDLK_ESCAPE) {
+                    in_popup_menu = false;
                     return false;
                 }
                 if(event.key.keysym.sym == SDLK_RETURN || event.key.keysym.sym == SDLK_SPACE) {
+                    in_popup_menu = false;
                     return true;
                 }
                 if(event.key.keysym.sym == SDLK_l) {
+                    ui.setVirtualKeyPressed(VirtualKey::LOAD, true);
                     std::string load_res = show_slots_menu(renderer, ui, crt_tex, current_rom_path, false);
+                    ui.setVirtualKeyPressed(VirtualKey::LOAD, false);
                     if (load_res != "BACK" && load_res != "QUIT") {
-                        extern Chip8 chip8;
                         chip8.load_state(load_res);
-                        return true;
-                    }
-                }
-                if(event.key.keysym.sym == SDLK_l) {
-                    std::string load_res = show_slots_menu(renderer, ui, crt_tex, current_rom_path, false);
-                    if (load_res != "BACK" && load_res != "QUIT") {
-                        extern Chip8 chip8;
-                        chip8.load_state(load_res);
+                        in_popup_menu = false;
                         return true;
                     }
                 }
@@ -485,11 +481,10 @@ bool show_popup(SDL_Renderer* renderer, const std::string& rom_name, RetroComput
             retro_gui::drawPixelText(renderer, "1-4,Q-R,A-F,Z-V FULL MAP", 100, 170, 2);
         }
 
-        retro_gui::drawPixelText(renderer, "R: RESTART GAME AT ANY TIME", CRT_WIDTH/2 - retro_gui::pixelTextWidth("R: RESTART GAME AT ANY TIME", 2)/2, 215, 2);
-        retro_gui::drawPixelText(renderer, "SPEED: [+] FASTER   [-] SLOWER", CRT_WIDTH/2 - retro_gui::pixelTextWidth("SPEED: [+] FASTER   [-] SLOWER", 2)/2, 240, 2);
-        retro_gui::drawPixelText(renderer, "PRESS ENTER OR SPACE TO START", CRT_WIDTH/2 - retro_gui::pixelTextWidth("PRESS ENTER OR SPACE TO START", 2)/2, 270, 2);
-
-        retro_gui::drawPixelText(renderer, "L: LOAD SAVED GAME", CRT_WIDTH/2 - retro_gui::pixelTextWidth("L: LOAD SAVED GAME", 2)/2, 230, 2);
+        retro_gui::drawPixelText(renderer, "ENTER / SPACE  START GAME",    CRT_WIDTH/2 - retro_gui::pixelTextWidth("ENTER / SPACE  START GAME",    2)/2, 195, 2);
+        retro_gui::drawPixelText(renderer, "L              LOAD SAVED GAME",CRT_WIDTH/2 - retro_gui::pixelTextWidth("L              LOAD SAVED GAME",2)/2, 212, 2);
+        retro_gui::drawPixelText(renderer, "R              RESTART ANYTIME", CRT_WIDTH/2 - retro_gui::pixelTextWidth("R              RESTART ANYTIME", 2)/2, 229, 2);
+        retro_gui::drawPixelText(renderer, "[+] FASTER  [-] SLOWER  SPEED",  CRT_WIDTH/2 - retro_gui::pixelTextWidth("[+] FASTER  [-] SLOWER  SPEED",  2)/2, 246, 2);
 
         SDL_SetRenderTarget(renderer, nullptr);
 
@@ -641,20 +636,22 @@ int main(int argc, char** argv){
         }
     });
 
-        ui.setOnSaveStateRequested([renderer, crt_tex, &ui]() {
-        extern bool in_popup_menu;
+    ui.setOnSaveStateRequested([renderer, crt_tex, &ui]() {
         if (current_rom_path != "" && !chip8.is_game_over() && !in_popup_menu) {
+            ui.setVirtualKeyPressed(VirtualKey::SAVE, true);
             std::string save_res = show_slots_menu(renderer, ui, crt_tex, current_rom_path, true);
+            ui.setVirtualKeyPressed(VirtualKey::SAVE, false);
             if (save_res != "BACK" && save_res != "QUIT") {
                 chip8.save_state(save_res);
             }
         }
     });
 
-        ui.setOnLoadStateRequested([renderer, crt_tex, &ui]() {
-        extern bool in_popup_menu;
-        if (current_rom_path != "" && (chip8.is_game_over() || in_popup_menu)) {
+    ui.setOnLoadStateRequested([renderer, crt_tex, &ui]() {
+        if (current_rom_path != "" && chip8.is_game_over()) {
+            ui.setVirtualKeyPressed(VirtualKey::LOAD, true);
             std::string load_res = show_slots_menu(renderer, ui, crt_tex, current_rom_path, false);
+            ui.setVirtualKeyPressed(VirtualKey::LOAD, false);
             if (load_res != "BACK" && load_res != "QUIT") {
                 chip8.load_state(load_res);
             }
@@ -758,18 +755,23 @@ int main(int argc, char** argv){
                     if(event.key.keysym.sym == SDLK_r) {
                         restart_requested = true;
                     }
-                    if(event.key.keysym.sym == SDLK_F5) {
-                        if (current_rom_path != "") chip8.save_state(current_rom_path + ".sav");
-                    }
-                    if(event.key.keysym.sym == SDLK_F9) {
-                        // LOAD popup
-                        std::string load_res = show_load_menu(renderer, ui, crt_tex);
-                        if (load_res != "BACK" && load_res != "QUIT") {
-                            is_loading_state = true;
-                            rom_to_load = load_res.substr(5);
-                            restart_requested = true;
+                    if(event.key.keysym.sym == SDLK_s && !chip8.is_game_over()) {
+                        // SAVE: pause and show slot picker
+                        ui.setVirtualKeyPressed(VirtualKey::SAVE, true);
+                        std::string save_res = show_slots_menu(renderer, ui, crt_tex, current_rom_path, true);
+                        ui.setVirtualKeyPressed(VirtualKey::SAVE, false);
+                        if (save_res != "BACK" && save_res != "QUIT") {
+                            chip8.save_state(save_res);
                         }
-                        if (load_res == "QUIT") { app_running = false; running = false; }
+                    }
+                    if(event.key.keysym.sym == SDLK_l && chip8.is_game_over()) {
+                        // LOAD: only available on game over screen
+                        ui.setVirtualKeyPressed(VirtualKey::LOAD, true);
+                        std::string load_res = show_slots_menu(renderer, ui, crt_tex, current_rom_path, false);
+                        ui.setVirtualKeyPressed(VirtualKey::LOAD, false);
+                        if (load_res != "BACK" && load_res != "QUIT") {
+                            chip8.load_state(load_res);
+                        }
                     }
                     
                     for(int i=0; i<16; i++){
@@ -832,8 +834,9 @@ int main(int argc, char** argv){
             SDL_SetRenderTarget(renderer, crt_tex);
             draw_graphics(renderer, chip8.display);
             if(chip8.is_game_over()){
-                retro_gui::drawPixelText(renderer, "- GAME OVER -", CRT_WIDTH/2 - retro_gui::pixelTextWidth("- GAME OVER -", 4)/2, CRT_HEIGHT/2 - 20, 4);
-                retro_gui::drawPixelText(renderer, "PRESS R TO REPLAY  ESC TO MENU", CRT_WIDTH/2 - retro_gui::pixelTextWidth("PRESS R TO REPLAY  ESC TO MENU", 2)/2, CRT_HEIGHT/2 + 30, 2);
+                retro_gui::drawPixelText(renderer, "- GAME OVER -", CRT_WIDTH/2 - retro_gui::pixelTextWidth("- GAME OVER -", 4)/2, CRT_HEIGHT/2 - 30, 4);
+                retro_gui::drawPixelText(renderer, "R: REPLAY     ESC: MENU", CRT_WIDTH/2 - retro_gui::pixelTextWidth("R: REPLAY     ESC: MENU", 2)/2, CRT_HEIGHT/2 + 20, 2);
+                retro_gui::drawPixelText(renderer, "L: LOAD SAVED GAME", CRT_WIDTH/2 - retro_gui::pixelTextWidth("L: LOAD SAVED GAME", 2)/2, CRT_HEIGHT/2 + 42, 2);
             }
             SDL_SetRenderTarget(renderer, nullptr);
 
