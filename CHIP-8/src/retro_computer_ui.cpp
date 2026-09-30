@@ -980,160 +980,77 @@ void RetroComputerUI::drawWaveformPanel() {
 
         for (int wi = 0; wi < waveCount; ++wi) {
             bool active = (wi == static_cast<int>(waveform_));
-            uint8_t fillAlpha  = active ? 230 : 38;   // body fill
-            uint8_t rimAlpha   = active ? 255 : 65;   // bright rim / outline
+            uint8_t bodyAlpha = active ? 220 : 32;
+            uint8_t rimAlpha  = active ? 255 : 55;
 
-            int cx  = xLeft;
-            int cy  = yTop + wi * (symH + symGap) + symH / 2;
-            int hw  = symW;           // total width of symbol
-            int hh  = symH / 2 - 1;  // half-height (excursion)
-            int sw  = std::max(2, static_cast<int>(4 * scale_));  // LED bar thickness
+            int cx = xLeft;
+            int cy = yTop + wi * (symH + symGap) + symH / 2;
+            int hw = symW;
+            int hh = symH / 2 - 1;
 
             Waveform wtype = static_cast<Waveform>(wi);
 
-            // ── SQUARE WAVE ───────────────────────────────────────────────
-            // Shape: a step polygon — upper-left block + lower-right block
+            // ── SQUARE: solid filled rectangle ────────────────────────────
             if (wtype == Waveform::SQUARE) {
-                // Outer glow (bloom)
-                if (active) {
-                    SDL_Rect glow = {cx - static_cast<int>(4*scale_), cy - hh - static_cast<int>(4*scale_),
-                                     hw + static_cast<int>(8*scale_), 2*hh + static_cast<int>(8*scale_)};
-                    setColor(theme_.accent, 28);
-                    SDL_RenderFillRect(ren_, &glow);
-                }
-                // Filled polygon: the square-wave step outline (closed shape)
-                //   top-left → top-mid → drop → bottom-mid → bottom-right → up-right
-                //   then back along baseline
-                SDL_Point sqPts[10] = {
-                    {cx,           cy - hh},       // TL
-                    {cx + hw/2,    cy - hh},       // TM
-                    {cx + hw/2,    cy - hh + sw},  // step down inner
-                    {cx + sw,      cy - hh + sw},  // inner horizontal
-                    {cx + sw,      cy + hh - sw},  // inner down
-                    {cx + hw/2,    cy + hh - sw},  // step inner
-                    {cx + hw/2,    cy + hh},       // BM
-                    {cx + hw,      cy + hh},       // BR
-                    {cx + hw,      cy - hh + sw},  // right inner
-                    {cx + hw - sw, cy - hh + sw},  // just close
-                };
-                // Simpler: draw as two solid rects + connector
-                SDL_Rect topBar = {cx,         cy - hh,      hw/2 + sw/2, sw};  // top horizontal
-                SDL_Rect botBar = {cx + hw/2 - sw/2, cy + hh - sw, hw/2 + sw/2, sw}; // bottom horizontal
-                SDL_Rect leftPillar  = {cx,           cy - hh, sw, 2*hh};       // left vertical
-                SDL_Rect midPillar   = {cx + hw/2 - sw/2, cy - hh, sw, 2*hh};  // middle vertical
-                SDL_Rect rightPillar = {cx + hw - sw, cy + hh - sw, sw, sw};   // right cap
-
-                // Dark fill inside the two "pulse" areas
-                SDL_Rect fillTop = {cx, cy - hh, hw/2, 2*hh};
-                SDL_Rect fillBot = {cx + hw/2, cy - hh, hw/2, 2*hh};
-                setColor(theme_.accent, fillAlpha / 3);
-                SDL_RenderFillRect(ren_, &fillTop);
-                setColor(theme_.accent, fillAlpha / 5);
-                SDL_RenderFillRect(ren_, &fillBot);
-
-                // Bold LED bars
-                setColor(theme_.accent, fillAlpha);
-                SDL_RenderFillRect(ren_, &topBar);
-                SDL_RenderFillRect(ren_, &botBar);
-                SDL_RenderFillRect(ren_, &leftPillar);
-                SDL_RenderFillRect(ren_, &midPillar);
-
-                // Rim highlight
+                SDL_Rect rect = {cx, cy - hh, hw, hh * 2};
+                setColor(theme_.accent, bodyAlpha);
+                SDL_RenderFillRect(ren_, &rect);
                 setColor(theme_.accent, rimAlpha);
-                SDL_RenderFillRect(ren_, &topBar);
-                SDL_RenderFillRect(ren_, &botBar);
-
-                (void)sqPts; (void)rightPillar;
+                SDL_RenderDrawRect(ren_, &rect);
             }
 
-            // ── SINE WAVE ─────────────────────────────────────────────────
-            // Shape: a fat band tracing the sine curve (top edge + bottom edge)
+            // ── TRIANGLE: solid filled triangle (peak at top) ─────────────
+            else if (wtype == Waveform::TRIANGLE) {
+                SDL_Point tri[3] = {
+                    {cx + hw / 2, cy - hh},   // apex
+                    {cx,          cy + hh},    // bottom-left
+                    {cx + hw,     cy + hh}     // bottom-right
+                };
+                setColor(theme_.accent, bodyAlpha);
+                fillPoly(tri, 3);
+                // Bright outline
+                setColor(theme_.accent, rimAlpha);
+                SDL_RenderDrawLine(ren_, tri[0].x, tri[0].y, tri[1].x, tri[1].y);
+                SDL_RenderDrawLine(ren_, tri[1].x, tri[1].y, tri[2].x, tri[2].y);
+                SDL_RenderDrawLine(ren_, tri[2].x, tri[2].y, tri[0].x, tri[0].y);
+            }
+
+            // ── SINE: filled band tracing the sine shape ───────────────────
             else if (wtype == Waveform::SINE) {
-                const int segs = 20;
-                // Build band polygon: top edge (forward) + bottom edge (reversed)
-                const int bandHalf = sw / 2;
-                // Draw as filled quads per segment
-                if (active) {
-                    SDL_Rect glow = {cx - static_cast<int>(4*scale_), cy - hh - static_cast<int>(4*scale_),
-                                     hw + static_cast<int>(8*scale_), 2*hh + static_cast<int>(8*scale_)};
-                    setColor(theme_.accent, 22);
-                    SDL_RenderFillRect(ren_, &glow);
-                }
+                const int segs    = 24;
+                const int bHalf   = std::max(2, static_cast<int>(3 * scale_));
                 for (int s = 0; s < segs; ++s) {
                     float t1 = static_cast<float>(s)     / segs;
                     float t2 = static_cast<float>(s + 1) / segs;
-                    float v1 = -std::sin(t1 * 2.0f * PI);
-                    float v2 = -std::sin(t2 * 2.0f * PI);
-                    int x1 = cx + static_cast<int>(t1 * hw);
-                    int x2 = cx + static_cast<int>(t2 * hw);
-                    int my1 = cy + static_cast<int>(v1 * hh); // center of band at t1
-                    int my2 = cy + static_cast<int>(v2 * hh); // center of band at t2
-                    // Fill the thick band as a quad
+                    int x1  = cx + static_cast<int>(t1 * hw);
+                    int x2  = cx + static_cast<int>(t2 * hw);
+                    int my1 = cy + static_cast<int>(-std::sin(t1 * 2.0f * PI) * hh);
+                    int my2 = cy + static_cast<int>(-std::sin(t2 * 2.0f * PI) * hh);
                     SDL_Point quad[4] = {
-                        {x1, my1 - bandHalf}, {x2, my2 - bandHalf},
-                        {x2, my2 + bandHalf}, {x1, my1 + bandHalf}
+                        {x1, my1 - bHalf}, {x2, my2 - bHalf},
+                        {x2, my2 + bHalf}, {x1, my1 + bHalf}
                     };
-                    setColor(theme_.accent, fillAlpha);
+                    setColor(theme_.accent, bodyAlpha);
                     fillPoly(quad, 4);
-                    // Bright rim on top edge
                     setColor(theme_.accent, rimAlpha);
-                    SDL_RenderDrawLine(ren_, x1, my1 - bandHalf, x2, my2 - bandHalf);
+                    SDL_RenderDrawLine(ren_, x1, my1, x2, my2);
                 }
             }
 
-            // ── TRIANGLE WAVE ─────────────────────────────────────────────
-            // Shape: filled zigzag band /\/
-            else if (wtype == Waveform::TRIANGLE) {
-                if (active) {
-                    SDL_Rect glow = {cx - static_cast<int>(4*scale_), cy - hh - static_cast<int>(4*scale_),
-                                     hw + static_cast<int>(8*scale_), 2*hh + static_cast<int>(8*scale_)};
-                    setColor(theme_.accent, 22);
-                    SDL_RenderFillRect(ren_, &glow);
-                }
-                // Three segments: rise, fall, rise — draw each as a thick filled quad
-                int x0 = cx, x1 = cx + hw/4, x2 = cx + 3*hw/4, x3 = cx + hw;
-                int bh = sw / 2;
-                // Segment 1: (x0,cy) -> (x1, cy-hh)
-                SDL_Point s1[4] = {{x0, cy - bh}, {x1, cy-hh - bh}, {x1, cy-hh + bh}, {x0, cy + bh}};
-                // Segment 2: (x1,cy-hh) -> (x2, cy+hh)
-                SDL_Point s2[4] = {{x1, cy-hh - bh}, {x2, cy+hh - bh}, {x2, cy+hh + bh}, {x1, cy-hh + bh}};
-                // Segment 3: (x2,cy+hh) -> (x3, cy)
-                SDL_Point s3[4] = {{x2, cy+hh - bh}, {x3, cy - bh}, {x3, cy + bh}, {x2, cy+hh + bh}};
-                setColor(theme_.accent, fillAlpha);
-                fillPoly(s1, 4); fillPoly(s2, 4); fillPoly(s3, 4);
-                // Bright rim
-                setColor(theme_.accent, rimAlpha);
-                SDL_RenderDrawLine(ren_, x0, cy, x1, cy-hh);
-                SDL_RenderDrawLine(ren_, x1, cy-hh, x2, cy+hh);
-                SDL_RenderDrawLine(ren_, x2, cy+hh, x3, cy);
-            }
-
-            // ── SAWTOOTH WAVE ─────────────────────────────────────────────
-            // Shape: two filled rising ramps with vertical drops
+            // ── SAWTOOTH: filled saw shape ─────────────────────────────────
             else if (wtype == Waveform::SAWTOOTH) {
-                if (active) {
-                    SDL_Rect glow = {cx - static_cast<int>(4*scale_), cy - hh - static_cast<int>(4*scale_),
-                                     hw + static_cast<int>(8*scale_), 2*hh + static_cast<int>(8*scale_)};
-                    setColor(theme_.accent, 22);
-                    SDL_RenderFillRect(ren_, &glow);
-                }
                 int mid = cx + hw / 2;
-                int bh  = sw / 2;
-                // Tooth 1: rise from (cx,cy+hh) to (mid,cy-hh)
-                SDL_Point t1[4] = {{cx,  cy+hh - bh}, {mid, cy-hh - bh}, {mid, cy-hh + bh}, {cx, cy+hh + bh}};
-                // Drop 1: vertical at mid
-                SDL_Rect  drop1 = {mid - sw/2, cy - hh, sw, 2*hh};
-                // Tooth 2: rise from (mid,cy+hh) to (cx+hw,cy-hh)
-                SDL_Point t2[4] = {{mid, cy+hh - bh}, {cx+hw, cy-hh - bh}, {cx+hw, cy-hh + bh}, {mid, cy+hh + bh}};
-
-                setColor(theme_.accent, fillAlpha);
+                int bh  = std::max(2, static_cast<int>(3 * scale_));
+                SDL_Point t1[4] = {{cx,  cy+hh-bh}, {mid, cy-hh-bh}, {mid, cy-hh+bh}, {cx,  cy+hh+bh}};
+                SDL_Rect  drop  = {mid - bh, cy - hh, bh*2, hh*2};
+                SDL_Point t2[4] = {{mid, cy+hh-bh}, {cx+hw, cy-hh-bh}, {cx+hw, cy-hh+bh}, {mid, cy+hh+bh}};
+                setColor(theme_.accent, bodyAlpha);
                 fillPoly(t1, 4);
-                SDL_RenderFillRect(ren_, &drop1);
+                SDL_RenderFillRect(ren_, &drop);
                 fillPoly(t2, 4);
-                // Rim
                 setColor(theme_.accent, rimAlpha);
-                SDL_RenderDrawLine(ren_, cx,  cy+hh, mid,    cy-hh);
-                SDL_RenderDrawLine(ren_, mid, cy+hh, cx+hw,  cy-hh);
+                SDL_RenderDrawLine(ren_, cx, cy+hh, mid, cy-hh);
+                SDL_RenderDrawLine(ren_, mid, cy+hh, cx+hw, cy-hh);
             }
         }
     }
