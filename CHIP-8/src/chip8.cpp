@@ -252,6 +252,7 @@ void Chip8::emulate_cycle(){
                             break;
                         }
                     }
+                    if(!key_pressed) return; // Block execution until key is pressed
                     pc += 2;
                 }
                     break;
@@ -274,19 +275,19 @@ void Chip8::emulate_cycle(){
                 case 0x0033:{ // FX33 - store BCD representation of v[x] at index
                     uint8_t value = v[(opcode & 0x0F00) >> 8];
                     memory[index] = value/100;
-                    memory[index+1] = value/10;
+                    memory[index+1] = (value/10) % 10;
                     memory[index+2] = value%10;
                     pc += 2;
                 }
                     break;
                 case 0x0055: // FX55 - store v[0] to v[x] in memory starting from index
-                    for(int i=0; i<((opcode & 0x0F00) >> 8); i++){
+                    for(int i=0; i<=((opcode & 0x0F00) >> 8); i++){
                         memory[index+i] = v[i];
                     }
                     pc += 2;
                     break;
                 case 0x0065: // FX65 - Fill v[0] to v[x] from memory starting at index
-                    for(int i=0; i<((opcode & 0x0F00) >> 8); i++){
+                    for(int i=0; i<=((opcode & 0x0F00) >> 8); i++){
                         v[i] = memory[index+i];
                     }
                     pc += 2;
@@ -301,7 +302,9 @@ void Chip8::emulate_cycle(){
             pc += 2;
             break;
     }
-    // We now update the timers
+}
+
+void Chip8::update_timers() {
     if(delay_timer > 0) delay_timer--;
     if(sound_timer > 0){
         if(sound_timer == 1) std::cout << "BEEP!" << std::endl;

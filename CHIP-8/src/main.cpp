@@ -17,7 +17,7 @@ const int WIDTH = 64*SCALE;
 const int HEIGHT = 32*SCALE;
 
 // Keyboard mapping
-uint8_t keymap[16] = {
+SDL_Keycode keymap[16] = {
     SDLK_x, // 0
     SDLK_1, // 1
     SDLK_2, // 2
@@ -64,7 +64,7 @@ void draw_graphics(SDL_Renderer* renderer, Chip8& chip8){
     for(int y=0; y<32; y++){
         for(int x=0; x<64; x++){
             if(chip8.display[x + (y*64)] == 1){
-                SDL_Rect rect = {x*SCALE, (31-y)*SCALE, SCALE, SCALE};
+                SDL_Rect rect = {x*SCALE, y*SCALE, SCALE, SCALE};
                 SDL_RenderFillRect(renderer, &rect);
             }
         }
@@ -138,11 +138,17 @@ int main(int argc, char** argv){
         handle_input(chip8, running);
         for(int i=0; i<10; i++){
             chip8.emulate_cycle();
-            SDL_Delay(16); // 60 FPS with 16ms per frame
+        }
+        
+        chip8.update_timers();
+        
+        if (chip8.draw_flag) {
+            draw_graphics(renderer, chip8);
+            chip8.draw_flag = false;
         }
 
         beeping = (chip8.get_sound_timer() > 0);
-        draw_graphics(renderer, chip8);
+        SDL_Delay(16); // 60 FPS with 16ms per frame
     }
     if(audio_device != 0) SDL_CloseAudioDevice(audio_device);
     SDL_DestroyRenderer(renderer);
