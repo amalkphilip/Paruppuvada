@@ -16,8 +16,8 @@ using retro_gui::ComputerTheme;
 using retro_gui::PaletteID;
 using retro_gui::Waveform;
 
-const int CRT_WIDTH = 640;
-const int CRT_HEIGHT = 320;
+const int CRT_WIDTH = 512;
+const int CRT_HEIGHT = 256;
 const int WINDOW_W = 1280;
 const int WINDOW_H = 800;
 
@@ -101,15 +101,10 @@ void draw_graphics(SDL_Renderer* renderer, const uint8_t* display){
                 int pw = (int)scale_x;
                 int ph = (int)scale_y;
                 
-                // Crisp core pixel with a small 1-pixel gap to prevent smearing
+                // Pure crisp CHIP-8 pixel with 1px grid gap
                 SDL_SetRenderDrawColor(renderer, fg_r, fg_g, fg_b, 255);
                 SDL_Rect rect = { px, py, pw - 1, ph - 1 };
                 SDL_RenderFillRect(renderer, &rect);
-                
-                // Very subtle outer glow
-                SDL_SetRenderDrawColor(renderer, fg_r, fg_g, fg_b, 40);
-                SDL_Rect g_rect = { px - 1, py - 1, pw + 1, ph + 1 };
-                SDL_RenderFillRect(renderer, &g_rect);
             }
         }
     }
