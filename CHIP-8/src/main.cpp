@@ -471,8 +471,8 @@ bool show_popup(SDL_Renderer* renderer, const std::string& rom_name, RetroComput
             retro_gui::drawPixelText(renderer, "PLAYER 2: NUM8 / NUM2  or  I / K", 80, 145, 2);
         } else if (base_name.find("BLINKY") != std::string::npos) {
             retro_gui::drawPixelText(renderer, "- BLINKY (PAC-MAN) CONTROLS -", CRT_WIDTH/2 - retro_gui::pixelTextWidth("- BLINKY (PAC-MAN) CONTROLS -", 3)/2, 45, 3);
-            retro_gui::drawPixelText(renderer, "ARROWS  or  WASD  : MOVE PAC-MAN", 90, 100, 2);
-            retro_gui::drawPixelText(renderer, "SPACE   or  1     : START / PAUSE", 90, 135, 2);
+            retro_gui::drawPixelText(renderer, "ARROWS (3,7,8,6): MOVE PAC-MAN", 90, 100, 2);
+            retro_gui::drawPixelText(renderer, "SPACE  (1)      : START / PAUSE", 90, 135, 2);
             retro_gui::drawPixelText(renderer, "MAZE GENERATES AT START (~8 SEC)", 90, 170, 2);
         } else {
             retro_gui::drawPixelText(renderer, "- CONTROLS -", CRT_WIDTH/2 - retro_gui::pixelTextWidth("- CONTROLS -", 3)/2, 45, 3);
@@ -740,6 +740,12 @@ int main(int argc, char** argv){
                     map_left = 5;  // Move Left (Key 5)
                     map_right = 6; // Move Right (Key 6)
                     map_space = 7; // Drop
+                } else if (base_name.find("BLINKY") != std::string::npos) {
+                    map_up = 3;    // Up (Key 3)
+                    map_down = 8;  // Down (Key 8)
+                    map_left = 7;  // Left (Key 7)
+                    map_right = 6; // Right (Key 6)
+                    map_space = 1; // Start/Pause (Key 1)
                 }
 
                 if(event.type == SDL_KEYDOWN){
