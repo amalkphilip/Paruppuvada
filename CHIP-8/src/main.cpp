@@ -1,5 +1,5 @@
-﻿#include "chip8.h"
-#include "retro_computer.h"
+#include "chip8.h"
+#include "retro_computer_ui.h"
 #include <SDL2/SDL.h>
 #include <iostream>
 #include <string>
@@ -10,11 +10,17 @@
 
 namespace fs = std::filesystem;
 
-// Virtual CRT Resolution for CHIP-8 native scaling
+using retro_gui::RetroComputerUI;
+using retro_gui::VirtualKey;
+using retro_gui::ComputerTheme;
+using retro_gui::PaletteID;
+using retro_gui::Waveform;
+
 const int CRT_WIDTH = 640;
 const int CRT_HEIGHT = 320;
+const int WINDOW_W = 1280;
+const int WINDOW_H = 800;
 
-// Keyboard mapping
 SDL_Keycode keymap[16] = {
     SDLK_x, SDLK_1, SDLK_2, SDLK_3,
     SDLK_q, SDLK_w, SDLK_e, SDLK_a,
@@ -22,115 +28,102 @@ SDL_Keycode keymap[16] = {
     SDLK_4, SDLK_r, SDLK_f, SDLK_v
 };
 
+Waveform current_waveform = Waveform::SINE;
+
 void audio_callback(void* userdata, uint8_t* stream, int len){
-    static uint32_t sample_index = 0;
+    static double phase = 0.0;
     int16_t* audio_buffer = (int16_t*) stream;
     int samples = len / 2;
     bool* beeping = (bool*) userdata;
+    
+    double freq = 440.0; 
+    double phase_inc = freq / 44100.0;
+
     for(int i=0; i<samples; i++){
         if(*beeping){
-            int16_t value = ((sample_index++ / 50) % 2) ? 3000 : -3000;
-            audio_buffer[i] = value;
-        }else{
+            float sample = retro_gui::waveformSample(current_waveform, phase);
+            audio_buffer[i] = (int16_t)(sample * 3000.0f);
+            phase += phase_inc;
+            if(phase >= 1.0) phase -= 1.0;
+        } else {
             audio_buffer[i] = 0;
-            sample_index = 0;
+            phase = 0.0;
         }
     }
 }
+
+// Minimal 3x5 font for simple text rendering
+const uint16_t tiny_font[128] = {
+    0x0000,0x0000,0x0000,0x0000,0x0000,0x0000,0x0000,0x0000,0x0000,0x0000,0x0000,0x0000,0x0000,0x0000,0x0000,0x0000,
+    0x0000,0x0000,0x0000,0x0000,0x0000,0x0000,0x0000,0x0000,0x0000,0x0000,0x0000,0x0000,0x0000,0x0000,0x0000,0x0000,
+    0x0000,0x2092,0x5200,0x72f2,0x2722,0x4210,0x25a5,0x2000,0x2222,0x4444,0x0525,0x0272,0x0024,0x0070,0x0002,0x1248,
+    0x7557,0x2222,0x7174,0x7171,0x5571,0x7471,0x7477,0x7111,0x7777,0x7771,0x0202,0x0204,0x1242,0x0707,0x4212,0x7120,
+    0x2552,0x2575,0x7577,0x3443,0x6556,0x7464,0x7464,0x3453,0x5575,0x7222,0x3113,0x5645,0x4447,0x5755,0x5755,0x2552,
+    0x7574,0x2553,0x7565,0x3436,0x7222,0x5552,0x5522,0x5555,0x5225,0x5522,0x7127,0x6226,0x4210,0x3443,0x0200,0x0007,
+    0x2000,0x2575,0x7577,0x3443,0x6556,0x7464,0x7464,0x3453,0x5575,0x7222,0x3113,0x5645,0x4447,0x5755,0x5755,0x2552,
+    0x7574,0x2553,0x7565,0x3436,0x7222,0x5552,0x5522,0x5555,0x5225,0x5522,0x7127,0x3223,0x2222,0x6446,0x0000,0x0000
+};
+
+void drawText(SDL_Renderer* renderer, const std::string& text, int x, int y, int scale) {
+    int cur_x = x;
+    for(char c : text){
+        if(c >= 0 && c < 128){
+            uint16_t glyph = tiny_font[(int)c];
+            for(int row=0; row<5; row++){
+                for(int col=0; col<3; col++){
+                    if(glyph & (1 << (14 - (row*3 + col)))){
+                        SDL_Rect r = { cur_x + col*scale, y + row*scale, scale + 1, scale + 1 };
+                        SDL_RenderFillRect(renderer, &r);
+                        SDL_Rect r2 = { cur_x + col*scale + 1, y + row*scale, scale + 1, scale + 1 };
+                        SDL_RenderFillRect(renderer, &r2);
+                    }
+                }
+            }
+        }
+        cur_x += 4 * scale;
+    }
+}
+
+uint8_t fg_r = 0x8F, fg_g = 0xEA, fg_b = 0x9B;
+uint8_t bg_r = 0x0B, bg_g = 0x1F, bg_b = 0x10;
 
 void draw_graphics(SDL_Renderer* renderer, const uint8_t* display){
     float scale_x = (float)CRT_WIDTH / 64.0f;
     float scale_y = (float)CRT_HEIGHT / 32.0f;
 
-    SDL_SetRenderDrawColor(renderer, 8, 22, 10, 255); // Dark CRT background
+    SDL_SetRenderDrawColor(renderer, bg_r, bg_g, bg_b, 255);
     SDL_RenderClear(renderer);
-    SDL_SetRenderDrawColor(renderer, 0x8F, 0xEA, 0x9B, 255); // Green phosphor pixels
+    SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
+
     for(int y=0; y<32; y++){
         for(int x=0; x<64; x++){
             if(display[x + (y*64)] == 1){
-                SDL_Rect rect = { (int)(x*scale_x), (int)(y*scale_y), (int)scale_x + 1, (int)scale_y + 1 };
+                int px = (int)(x*scale_x);
+                int py = (int)(y*scale_y);
+                int pw = (int)scale_x + 1;
+                int ph = (int)scale_y + 1;
+                
+                // Glow effect
+                SDL_SetRenderDrawColor(renderer, fg_r, fg_g, fg_b, 80);
+                SDL_Rect g_rect = { px - 2, py - 2, pw + 4, ph + 4 };
+                SDL_RenderFillRect(renderer, &g_rect);
+
+                SDL_SetRenderDrawColor(renderer, fg_r, fg_g, fg_b, 150);
+                SDL_Rect g_rect2 = { px - 1, py - 1, pw + 2, ph + 2 };
+                SDL_RenderFillRect(renderer, &g_rect2);
+
+                // Core pixel
+                SDL_SetRenderDrawColor(renderer, fg_r, fg_g, fg_b, 255);
+                SDL_Rect rect = { px, py, pw, ph };
                 SDL_RenderFillRect(renderer, &rect);
             }
         }
     }
 }
 
-int cycles_per_frame = 10;
+int cycles_per_frame = 12;
 std::string current_rom_path = "";
-
-void handle_speed_keys(const SDL_Event& event, RetroComputerUI& ui) {
-    if(event.type == SDL_KEYDOWN){
-        if(event.key.keysym.sym == SDLK_PLUS || event.key.keysym.sym == SDLK_KP_PLUS || event.key.keysym.sym == SDLK_EQUALS) {
-            cycles_per_frame += 1;
-            ui.setVirtualKeyPressed(17, true);
-        } else if(event.key.keysym.sym == SDLK_MINUS || event.key.keysym.sym == SDLK_KP_MINUS) {
-            cycles_per_frame = std::max(1, cycles_per_frame - 1);
-            ui.setVirtualKeyPressed(16, true);
-        }
-    }
-    if(event.type == SDL_KEYUP){
-        if(event.key.keysym.sym == SDLK_PLUS || event.key.keysym.sym == SDLK_KP_PLUS || event.key.keysym.sym == SDLK_EQUALS) ui.setVirtualKeyPressed(17, false);
-        if(event.key.keysym.sym == SDLK_MINUS || event.key.keysym.sym == SDLK_KP_MINUS) ui.setVirtualKeyPressed(16, false);
-    }
-}
-
-void handle_input(Chip8& chip8, bool& running, RetroComputerUI& ui, bool& restart_requested){
-    SDL_Event event;
-    while(SDL_PollEvent(&event)){
-        ui.handleEvent(event); // GUI handles virtual mouse clicks
-        handle_speed_keys(event, ui);
-        
-        if(event.type == SDL_QUIT) {
-            running = false;
-        }
-        if(event.type == SDL_KEYDOWN){
-            if(event.key.keysym.sym == SDLK_ESCAPE) {
-                running = false; // Back to menu
-            }
-            if(event.key.keysym.sym == SDLK_r) {
-                restart_requested = true;
-            }
-            if(event.key.keysym.sym == SDLK_F5) {
-                ui.setVirtualKeyPressed(18, true);
-            }
-            if(event.key.keysym.sym == SDLK_F9) {
-                ui.setVirtualKeyPressed(19, true);
-            }
-            
-            for(int i=0; i<16; i++){
-                bool is_mapped = (event.key.keysym.sym == keymap[i]);
-                if (event.key.keysym.sym == SDLK_UP && i == 2) is_mapped = true;
-                if (event.key.keysym.sym == SDLK_DOWN && i == 8) is_mapped = true;
-                if (event.key.keysym.sym == SDLK_LEFT && i == 4) is_mapped = true;
-                if (event.key.keysym.sym == SDLK_RIGHT && i == 6) is_mapped = true;
-                if (event.key.keysym.sym == SDLK_SPACE && i == 5) is_mapped = true;
-                
-                if(is_mapped) {
-                    chip8.key[i] = 1;
-                    ui.setVirtualKeyPressed(i, true);
-                }
-            }
-        }
-        if(event.type == SDL_KEYUP){
-            if(event.key.keysym.sym == SDLK_F5) ui.setVirtualKeyPressed(18, false);
-            if(event.key.keysym.sym == SDLK_F9) ui.setVirtualKeyPressed(19, false);
-            
-            for(int i=0; i<16; i++){
-                bool is_mapped = (event.key.keysym.sym == keymap[i]);
-                if (event.key.keysym.sym == SDLK_UP && i == 2) is_mapped = true;
-                if (event.key.keysym.sym == SDLK_DOWN && i == 8) is_mapped = true;
-                if (event.key.keysym.sym == SDLK_LEFT && i == 4) is_mapped = true;
-                if (event.key.keysym.sym == SDLK_RIGHT && i == 6) is_mapped = true;
-                if (event.key.keysym.sym == SDLK_SPACE && i == 5) is_mapped = true;
-                
-                if(is_mapped) {
-                    chip8.key[i] = 0;
-                    ui.setVirtualKeyPressed(i, false);
-                }
-            }
-        }
-    }
-}
+bool app_running = true;
 
 std::string show_load_menu(SDL_Renderer* renderer, RetroComputerUI& ui, SDL_Texture* crt_tex) {
     std::vector<std::string> games;
@@ -160,12 +153,10 @@ std::string show_load_menu(SDL_Renderer* renderer, RetroComputerUI& ui, SDL_Text
     const int max_visible = 4;
     
     SDL_Event event;
-    bool selecting = true;
-    while(selecting){
+    while(true){
         while(SDL_PollEvent(&event)){
+            if(event.type == SDL_QUIT) { app_running = false; return "QUIT"; }
             ui.handleEvent(event);
-            handle_speed_keys(event, ui);
-            if(event.type == SDL_QUIT) return "QUIT";
             if(event.type == SDL_KEYDOWN){
                 if(event.key.keysym.sym == SDLK_UP) {
                     selection--;
@@ -188,26 +179,26 @@ std::string show_load_menu(SDL_Renderer* renderer, RetroComputerUI& ui, SDL_Text
         else if (selection >= scroll_offset + max_visible) scroll_offset = selection - max_visible + 1;
         
         SDL_SetRenderTarget(renderer, crt_tex);
-        SDL_SetRenderDrawColor(renderer, 8, 22, 10, 255);
+        SDL_SetRenderDrawColor(renderer, bg_r, bg_g, bg_b, 255);
         SDL_RenderClear(renderer);
         
-        SDL_SetRenderDrawColor(renderer, 0x8F, 0xEA, 0x9B, 255);
-        rcui::drawText(renderer, "SELECT A SAVE", CRT_WIDTH/2 - (13*16)/2, 40, 4);
+        SDL_SetRenderDrawColor(renderer, fg_r, fg_g, fg_b, 255);
+        drawText(renderer, "SELECT A SAVE", CRT_WIDTH/2 - (13*16)/2, 40, 4);
         
         for(int i=0; i<max_visible; i++){
             int game_idx = scroll_offset + i;
             if(game_idx >= (int)games.size()) break;
-            if(game_idx == selection) rcui::drawText(renderer, ">", 50, 120 + i*40, 3);
-            rcui::drawText(renderer, games[game_idx].c_str(), 100, 120 + i*40, 2);
+            if(game_idx == selection) drawText(renderer, ">", 50, 120 + i*40, 3);
+            drawText(renderer, games[game_idx].c_str(), 100, 120 + i*40, 2);
         }
-        rcui::drawText(renderer, "PRESS ENTER TO LOAD", CRT_WIDTH/2 - (19*8)/2, CRT_HEIGHT - 40, 2);
+        drawText(renderer, "PRESS ENTER TO LOAD", CRT_WIDTH/2 - (19*8)/2, CRT_HEIGHT - 40, 2);
         SDL_SetRenderTarget(renderer, nullptr);
 
-        ui.setSpeedLevel(cycles_per_frame);
         ui.beginFrame();
         ui.renderContent(crt_tex);
         ui.endFrame();
         
+        SDL_RenderPresent(renderer);
         SDL_Delay(16);
     }
     return "QUIT";
@@ -241,12 +232,10 @@ std::string run_menu(SDL_Renderer* renderer, RetroComputerUI& ui, SDL_Texture* c
     const int max_visible = 4;
     
     SDL_Event event;
-    bool selecting = true;
-    while(selecting){
+    while(true){
         while(SDL_PollEvent(&event)){
+            if(event.type == SDL_QUIT) { app_running = false; return "QUIT"; }
             ui.handleEvent(event);
-            handle_speed_keys(event, ui);
-            if(event.type == SDL_QUIT) return "QUIT";
             if(event.type == SDL_KEYDOWN){
                 if(event.key.keysym.sym == SDLK_UP) {
                     selection--;
@@ -263,39 +252,32 @@ std::string run_menu(SDL_Renderer* renderer, RetroComputerUI& ui, SDL_Texture* c
                     return "QUIT";
                 }
             }
-            if (ui.isVirtualKeyPressed(19)) {
-                std::string load_res = show_load_menu(renderer, ui, crt_tex);
-                if (load_res != "BACK" && load_res != "QUIT") return load_res;
-                if (load_res == "QUIT") return "QUIT";
-            }
         }
         
         if (selection < scroll_offset) scroll_offset = selection;
         else if (selection >= scroll_offset + max_visible) scroll_offset = selection - max_visible + 1;
         
-        // Render to CRT texture
         SDL_SetRenderTarget(renderer, crt_tex);
-        SDL_SetRenderDrawColor(renderer, 8, 22, 10, 255); // Dark CRT background
+        SDL_SetRenderDrawColor(renderer, bg_r, bg_g, bg_b, 255);
         SDL_RenderClear(renderer);
         
-        SDL_SetRenderDrawColor(renderer, 0x8F, 0xEA, 0x9B, 255); // Bright green phosphor text
-        rcui::drawText(renderer, "SELECT A GAME", CRT_WIDTH/2 - (13*16)/2, 40, 4);
+        SDL_SetRenderDrawColor(renderer, fg_r, fg_g, fg_b, 255);
+        drawText(renderer, "SELECT A GAME", CRT_WIDTH/2 - (13*16)/2, 40, 4);
         
         for(int i=0; i<max_visible; i++){
             int game_idx = scroll_offset + i;
             if(game_idx >= (int)games.size()) break;
-            if(game_idx == selection) rcui::drawText(renderer, ">", 150, 120 + i*40, 3);
-            rcui::drawText(renderer, games[game_idx].c_str(), 200, 120 + i*40, 3);
+            if(game_idx == selection) drawText(renderer, ">", 150, 120 + i*40, 3);
+            drawText(renderer, games[game_idx].c_str(), 200, 120 + i*40, 3);
         }
-        rcui::drawText(renderer, "PRESS ENTER TO START", CRT_WIDTH/2 - (20*8)/2, CRT_HEIGHT - 40, 2);
+        drawText(renderer, "PRESS ENTER TO START", CRT_WIDTH/2 - (20*8)/2, CRT_HEIGHT - 40, 2);
         SDL_SetRenderTarget(renderer, nullptr);
 
-        // Render whole UI
-        ui.setSpeedLevel(cycles_per_frame);
         ui.beginFrame();
         ui.renderContent(crt_tex);
         ui.endFrame();
         
+        SDL_RenderPresent(renderer);
         SDL_Delay(16);
     }
     return "QUIT";
@@ -303,91 +285,128 @@ std::string run_menu(SDL_Renderer* renderer, RetroComputerUI& ui, SDL_Texture* c
 
 bool show_popup(SDL_Renderer* renderer, const std::string& rom_name, RetroComputerUI& ui, SDL_Texture* crt_tex) {
     SDL_Event event;
-    bool in_popup = true;
-    
     std::string base_name = rom_name;
     size_t slash = base_name.find_last_of("/\\");
     if(slash != std::string::npos) base_name = base_name.substr(slash + 1);
     std::transform(base_name.begin(), base_name.end(), base_name.begin(), ::toupper);
 
-    while(in_popup){
+    while(true){
         while(SDL_PollEvent(&event)){
+            if(event.type == SDL_QUIT) { app_running = false; return false; }
             ui.handleEvent(event);
-            handle_speed_keys(event, ui);
-            if(event.type == SDL_QUIT) return false;
             if(event.type == SDL_KEYDOWN){
                 if(event.key.keysym.sym == SDLK_ESCAPE) {
-                    return false; // Back to menu
+                    return false;
                 }
                 if(event.key.keysym.sym == SDLK_RETURN || event.key.keysym.sym == SDLK_SPACE) {
-                    return true;  // Launch game
+                    return true;
                 }
             }
         }
         
         SDL_SetRenderTarget(renderer, crt_tex);
-        SDL_SetRenderDrawColor(renderer, 8, 22, 10, 255); // Dark CRT background
+        SDL_SetRenderDrawColor(renderer, bg_r, bg_g, bg_b, 255);
         SDL_RenderClear(renderer);
-        SDL_SetRenderDrawColor(renderer, 0x8F, 0xEA, 0x9B, 255); // Bright green phosphor text
+        SDL_SetRenderDrawColor(renderer, fg_r, fg_g, fg_b, 255);
         
         SDL_Rect border = { 30, 20, CRT_WIDTH - 60, CRT_HEIGHT - 40 };
         SDL_RenderDrawRect(renderer, &border);
         border.x += 2; border.y += 2; border.w -= 4; border.h -= 4;
         SDL_RenderDrawRect(renderer, &border);
         
-        rcui::drawText(renderer, "ESC: BACK", CRT_WIDTH - 150, 30, 2);
+        drawText(renderer, "ESC: BACK", CRT_WIDTH - 150, 30, 2);
         
         if (base_name.find("TETRIS") != std::string::npos) {
-            rcui::drawText(renderer, "- TETRIS CONTROLS -", CRT_WIDTH/2 - (19*12)/2, 45, 3);
-            rcui::drawText(renderer, "W / UP ARROW     ROTATE", 100, 95, 2);
-            rcui::drawText(renderer, "A / LEFT ARROW   MOVE LEFT", 100, 125, 2);
-            rcui::drawText(renderer, "D / RIGHT ARROW  MOVE RIGHT", 100, 155, 2);
-            rcui::drawText(renderer, "S / DOWN / SPACE DROP", 100, 185, 2);
+            drawText(renderer, "- TETRIS CONTROLS -", CRT_WIDTH/2 - (19*12)/2, 45, 3);
+            drawText(renderer, "W / UP ARROW     ROTATE", 100, 95, 2);
+            drawText(renderer, "A / LEFT ARROW   MOVE LEFT", 100, 125, 2);
+            drawText(renderer, "D / RIGHT ARROW  MOVE RIGHT", 100, 155, 2);
+            drawText(renderer, "S / DOWN / SPACE DROP", 100, 185, 2);
         } else if (base_name.find("PONG") != std::string::npos) {
-            rcui::drawText(renderer, "- PONG CONTROLS -", CRT_WIDTH/2 - (17*12)/2, 45, 3);
-            rcui::drawText(renderer, "PLAYER 1: UP / DOWN  or  W / S", 80, 105, 2);
-            rcui::drawText(renderer, "PLAYER 2: NUM8 / NUM2  or  I / K", 80, 145, 2);
+            drawText(renderer, "- PONG CONTROLS -", CRT_WIDTH/2 - (17*12)/2, 45, 3);
+            drawText(renderer, "PLAYER 1: UP / DOWN  or  W / S", 80, 105, 2);
+            drawText(renderer, "PLAYER 2: NUM8 / NUM2  or  I / K", 80, 145, 2);
         } else if (base_name.find("BLINKY") != std::string::npos) {
-            rcui::drawText(renderer, "- BLINKY (PAC-MAN) CONTROLS -", CRT_WIDTH/2 - (29*12)/2, 45, 3);
-            rcui::drawText(renderer, "ARROWS  or  WASD  : MOVE PAC-MAN", 90, 100, 2);
-            rcui::drawText(renderer, "SPACE   or  1     : START / PAUSE", 90, 135, 2);
-            rcui::drawText(renderer, "MAZE GENERATES AT START (~8 SEC)", 90, 170, 2);
+            drawText(renderer, "- BLINKY (PAC-MAN) CONTROLS -", CRT_WIDTH/2 - (29*12)/2, 45, 3);
+            drawText(renderer, "ARROWS  or  WASD  : MOVE PAC-MAN", 90, 100, 2);
+            drawText(renderer, "SPACE   or  1     : START / PAUSE", 90, 135, 2);
+            drawText(renderer, "MAZE GENERATES AT START (~8 SEC)", 90, 170, 2);
         } else {
-            rcui::drawText(renderer, "- CONTROLS -", CRT_WIDTH/2 - (12*12)/2, 45, 3);
-            rcui::drawText(renderer, "ARROWS / 2468   MOVE", 100, 100, 2);
-            rcui::drawText(renderer, "SPACE  / 5      ACTION", 100, 135, 2);
-            rcui::drawText(renderer, "1-4,Q-R,A-F,Z-V FULL MAP", 100, 170, 2);
+            drawText(renderer, "- CONTROLS -", CRT_WIDTH/2 - (12*12)/2, 45, 3);
+            drawText(renderer, "ARROWS / 2468   MOVE", 100, 100, 2);
+            drawText(renderer, "SPACE  / 5      ACTION", 100, 135, 2);
+            drawText(renderer, "1-4,Q-R,A-F,Z-V FULL MAP", 100, 170, 2);
         }
 
-        rcui::drawText(renderer, "R: RESTART GAME AT ANY TIME", CRT_WIDTH/2 - (27*8)/2, 215, 2);
-        rcui::drawText(renderer, "SPEED: [+] FASTER   [-] SLOWER", CRT_WIDTH/2 - (30*8)/2, 240, 2);
-        rcui::drawText(renderer, "PRESS ENTER OR SPACE TO START", CRT_WIDTH/2 - (29*8)/2, 270, 2);
+        drawText(renderer, "R: RESTART GAME AT ANY TIME", CRT_WIDTH/2 - (27*8)/2, 215, 2);
+        drawText(renderer, "SPEED: [+] FASTER   [-] SLOWER", CRT_WIDTH/2 - (30*8)/2, 240, 2);
+        drawText(renderer, "PRESS ENTER OR SPACE TO START", CRT_WIDTH/2 - (29*8)/2, 270, 2);
 
         SDL_SetRenderTarget(renderer, nullptr);
 
-        ui.setSpeedLevel(cycles_per_frame);
         ui.beginFrame();
         ui.renderContent(crt_tex);
         ui.endFrame();
+        
+        SDL_RenderPresent(renderer);
         SDL_Delay(16);
     }
     return false;
 }
 
-void on_virtual_key(int key, bool pressed, void* userdata) {
-    Chip8* chip8 = (Chip8*)userdata;
-    if (key < 16) {
-        if (chip8) chip8->key[key] = pressed ? 1 : 0;
-    } else if (pressed) {
-        if (key == 16) cycles_per_frame = std::max(1, cycles_per_frame - 1);
-        if (key == 17) cycles_per_frame += 1;
-        if (key == 18) {
-            if (chip8 && current_rom_path != "") {
-                chip8->save_state(current_rom_path + ".sav");
-                std::cout << "Saved state to " << current_rom_path << ".sav" << std::endl;
-            }
+// External Color Selector logic
+void draw_external_color_selector(SDL_Renderer* renderer, ComputerTheme current_theme) {
+    int sx = WINDOW_W - 250 - 20;
+    int sy = 20;
+    
+    SDL_Rect bg = { sx, sy, 250, 120 };
+    SDL_SetRenderDrawColor(renderer, 40, 40, 45, 255);
+    SDL_RenderFillRect(renderer, &bg);
+    SDL_SetRenderDrawColor(renderer, 100, 100, 110, 255);
+    SDL_RenderDrawRect(renderer, &bg);
+    
+    SDL_SetRenderDrawColor(renderer, 200, 200, 210, 255);
+    drawText(renderer, "COMPUTER COLOR", sx + 125 - (14*8)/2, sy + 15, 2);
+    
+    const char* names[] = { "WHITE", "GREEN", "AMBER", "DARK" };
+    ComputerTheme themes[] = { ComputerTheme::WHITE, ComputerTheme::GREEN, ComputerTheme::AMBER, ComputerTheme::CHARCOAL };
+    
+    for(int i=0; i<4; i++){
+        int cx = sx + 25 + (i * 55);
+        int cy = sy + 55;
+        
+        if (current_theme == themes[i]) {
+            SDL_Rect hl = { cx - 5, cy - 5, 45, 55 };
+            SDL_SetRenderDrawColor(renderer, 80, 80, 100, 255);
+            SDL_RenderFillRect(renderer, &hl);
+            SDL_SetRenderDrawColor(renderer, 200, 200, 100, 255);
+            SDL_RenderDrawRect(renderer, &hl);
+        }
+        
+        SDL_SetRenderDrawColor(renderer, 200, 200, 210, 255);
+        SDL_Rect dot = { cx + 12, cy, 10, 10 };
+        SDL_RenderFillRect(renderer, &dot);
+        
+        drawText(renderer, names[i], cx + 17 - ((int)strlen(names[i])*4)/2, cy + 20, 1);
+    }
+}
+
+ComputerTheme handle_color_selector_click(int x, int y, ComputerTheme current_theme) {
+    int sx = WINDOW_W - 250 - 20;
+    int sy = 20;
+    
+    ComputerTheme themes[] = { ComputerTheme::WHITE, ComputerTheme::GREEN, ComputerTheme::AMBER, ComputerTheme::CHARCOAL };
+    
+    for(int i=0; i<4; i++){
+        int cx = sx + 25 + (i * 55);
+        int cy = sy + 55;
+        SDL_Rect hl = { cx - 5, cy - 5, 45, 55 };
+        SDL_Point pt = { x, y };
+        if(SDL_PointInRect(&pt, &hl)){
+            return themes[i];
         }
     }
+    return current_theme;
 }
 
 int main(int argc, char** argv){
@@ -409,16 +428,84 @@ int main(int argc, char** argv){
     if(audio_device == 0) std::cerr << "Failed to open audio: " << SDL_GetError() << std::endl;
     else SDL_PauseAudioDevice(audio_device, 0);
 
-    SDL_Window* window = SDL_CreateWindow("Chip-8 Emulator", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 960, 840, SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE);
+    SDL_Window* window = SDL_CreateWindow("Chip-8 Emulator", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, WINDOW_W, WINDOW_H, SDL_WINDOW_SHOWN);
     SDL_Renderer* renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_TARGETTEXTURE);
 
     RetroComputerUI ui;
-    ui.init(renderer, 960, 840);
-    ui.setKeyCallback(on_virtual_key, nullptr); // Set early so menu clicks work
+    ui.init(renderer, WINDOW_W, WINDOW_H);
+    ui.setComputerTheme(ComputerTheme::GREEN);
     
     SDL_Texture* crt_tex = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_TARGET, CRT_WIDTH, CRT_HEIGHT);
 
-    bool app_running = true;
+    Chip8 chip8;
+
+    ui.setOnVirtualKeyPressed([&chip8](VirtualKey key, bool pressed) {
+        int hex = retro_gui::virtualKeyToChip8Hex(key);
+        if (hex >= 0) {
+            chip8.key[hex] = pressed ? 1 : 0;
+        } else if (key == VirtualKey::ARROW_UP) {
+            chip8.key[2] = pressed ? 1 : 0;
+        } else if (key == VirtualKey::ARROW_DOWN) {
+            chip8.key[8] = pressed ? 1 : 0;
+        } else if (key == VirtualKey::ARROW_LEFT) {
+            chip8.key[4] = pressed ? 1 : 0;
+        } else if (key == VirtualKey::ARROW_RIGHT) {
+            chip8.key[6] = pressed ? 1 : 0;
+        } else if (key == VirtualKey::SPACE) {
+            chip8.key[5] = pressed ? 1 : 0;
+        }
+    });
+
+    ui.setOnVirtualKeyReleased([&chip8](VirtualKey key, bool pressed) {
+        int hex = retro_gui::virtualKeyToChip8Hex(key);
+        if (hex >= 0) {
+            chip8.key[hex] = pressed ? 1 : 0;
+        } else if (key == VirtualKey::ARROW_UP) {
+            chip8.key[2] = pressed ? 1 : 0;
+        } else if (key == VirtualKey::ARROW_DOWN) {
+            chip8.key[8] = pressed ? 1 : 0;
+        } else if (key == VirtualKey::ARROW_LEFT) {
+            chip8.key[4] = pressed ? 1 : 0;
+        } else if (key == VirtualKey::ARROW_RIGHT) {
+            chip8.key[6] = pressed ? 1 : 0;
+        } else if (key == VirtualKey::SPACE) {
+            chip8.key[5] = pressed ? 1 : 0;
+        }
+    });
+
+    ui.setOnSpeedChanged([](int cycles) {
+        cycles_per_frame = cycles;
+    });
+
+    ui.setOnWaveformChanged([](Waveform w) {
+        current_waveform = w;
+    });
+
+    ui.setOnPaletteChanged([](PaletteID pid) {
+        if (pid == PaletteID::CLASSIC_GREEN) {
+            fg_r = 0x8F; fg_g = 0xEA; fg_b = 0x9B;
+            bg_r = 0x0B; bg_g = 0x1F; bg_b = 0x10;
+        } else if (pid == PaletteID::AMBER_CRT) {
+            fg_r = 0xFF; fg_g = 0xB2; fg_b = 0x45;
+            bg_r = 0x18; bg_g = 0x0D; bg_b = 0x03;
+        } else if (pid == PaletteID::NEON_HIGH_CONTRAST) {
+            fg_r = 0xD7; fg_g = 0xFF; fg_b = 0x3B;
+            bg_r = 0x02; bg_g = 0x04; bg_b = 0x03;
+        }
+    });
+
+    ui.setOnSaveStateRequested([&chip8]() {
+        if (current_rom_path != "") {
+            chip8.save_state(current_rom_path + ".sav");
+            std::cout << "Saved state to " << current_rom_path << ".sav" << std::endl;
+        }
+    });
+
+    ui.setOnLoadStateRequested([&chip8]() {
+        // Just dummy logic for now to allow external load menu to trigger
+        // Actual loading is handled globally or via load menu if available
+    });
+
     while(app_running) {
         std::string rom_to_load = "";
         if(argc >= 2) rom_to_load = argv[1];
@@ -445,37 +532,19 @@ int main(int argc, char** argv){
 
         if (!show_popup(renderer, current_rom_path, ui, crt_tex)) {
             if(argc >= 2) app_running = false;
-            continue; // Return to menu
+            continue;
         }
-
-        keymap[0] = SDLK_x; keymap[1] = SDLK_1; keymap[2] = SDLK_2; keymap[3] = SDLK_3;
-        keymap[4] = SDLK_q; keymap[5] = SDLK_w; keymap[6] = SDLK_e; keymap[7] = SDLK_a;
-        keymap[8] = SDLK_s; keymap[9] = SDLK_d; keymap[10] = SDLK_z; keymap[11] = SDLK_c;
-        keymap[12] = SDLK_4; keymap[13] = SDLK_r; keymap[14] = SDLK_f; keymap[15] = SDLK_v;
 
         std::string base_name = current_rom_path;
         size_t slash = base_name.find_last_of("/\\");
         if(slash != std::string::npos) base_name = base_name.substr(slash + 1);
         std::transform(base_name.begin(), base_name.end(), base_name.begin(), ::toupper);
 
-        if (base_name.find("TETRIS") != std::string::npos) {
-            keymap[5] = SDLK_w; keymap[4] = SDLK_a; keymap[6] = SDLK_d; keymap[7] = SDLK_s;
-        } else if (base_name.find("PONG") != std::string::npos) {
-            keymap[1] = SDLK_UP; keymap[4] = SDLK_DOWN; keymap[0xC] = SDLK_KP_8; keymap[0xD] = SDLK_KP_2;
-        } else if (base_name.find("BLINKY") != std::string::npos) {
-            keymap[3] = SDLK_UP; keymap[6] = SDLK_DOWN; keymap[7] = SDLK_LEFT; keymap[8] = SDLK_RIGHT;
-        }
-
-        // Optimal default speed per game:
-        // Blinky (CHIP-48) needs ~25 cycles/frame for smooth arcade speed
-        cycles_per_frame = 10;
+        cycles_per_frame = ui.getSpeedValue();
         if (base_name.find("BLINKY") != std::string::npos) {
-            cycles_per_frame = 25;
+            // override speed if it's default
         }
 
-        Chip8 chip8;
-        
-        // Classic games often rely on original VIP hardware quirks
         if (base_name.find("TETRIS") != std::string::npos || 
             base_name.find("PONG") != std::string::npos || 
             base_name.find("BLINKY") != std::string::npos ||
@@ -493,15 +562,73 @@ int main(int argc, char** argv){
             chip8.load_rom(current_rom_path);
         }
         
-        ui.setKeyCallback(on_virtual_key, &chip8);
-        
         bool running = true;
         bool restart_requested = false;
 
-        while(running){
-            handle_input(chip8, running, ui, restart_requested);
+        while(running && app_running){
+            SDL_Event event;
+            while(SDL_PollEvent(&event)){
+                if(event.type == SDL_QUIT) { running = false; app_running = false; }
+                
+                ui.handleEvent(event); 
+                
+                if(event.type == SDL_MOUSEBUTTONDOWN && event.button.button == SDL_BUTTON_LEFT){
+                    ui.setComputerTheme(handle_color_selector_click(event.button.x, event.button.y, ui.getComputerTheme()));
+                }
+
+                if(event.type == SDL_KEYDOWN){
+                    if(event.key.keysym.sym == SDLK_ESCAPE) {
+                        running = false;
+                    }
+                    if(event.key.keysym.sym == SDLK_r) {
+                        restart_requested = true;
+                    }
+                    if(event.key.keysym.sym == SDLK_F5) {
+                        if (current_rom_path != "") chip8.save_state(current_rom_path + ".sav");
+                    }
+                    if(event.key.keysym.sym == SDLK_F9) {
+                        // LOAD popup
+                        std::string load_res = show_load_menu(renderer, ui, crt_tex);
+                        if (load_res != "BACK" && load_res != "QUIT") {
+                            is_loading_state = true;
+                            rom_to_load = load_res.substr(5);
+                            restart_requested = true;
+                        }
+                        if (load_res == "QUIT") { app_running = false; running = false; }
+                    }
+                    
+                    for(int i=0; i<16; i++){
+                        bool is_mapped = (event.key.keysym.sym == keymap[i]);
+                        if (event.key.keysym.sym == SDLK_UP && i == 2) is_mapped = true;
+                        if (event.key.keysym.sym == SDLK_DOWN && i == 8) is_mapped = true;
+                        if (event.key.keysym.sym == SDLK_LEFT && i == 4) is_mapped = true;
+                        if (event.key.keysym.sym == SDLK_RIGHT && i == 6) is_mapped = true;
+                        if (event.key.keysym.sym == SDLK_SPACE && i == 5) is_mapped = true;
+                        
+                        if(is_mapped) {
+                            chip8.key[i] = 1;
+                            ui.setVirtualKeyPressed(i, true);
+                        }
+                    }
+                }
+                if(event.type == SDL_KEYUP){
+                    for(int i=0; i<16; i++){
+                        bool is_mapped = (event.key.keysym.sym == keymap[i]);
+                        if (event.key.keysym.sym == SDLK_UP && i == 2) is_mapped = true;
+                        if (event.key.keysym.sym == SDLK_DOWN && i == 8) is_mapped = true;
+                        if (event.key.keysym.sym == SDLK_LEFT && i == 4) is_mapped = true;
+                        if (event.key.keysym.sym == SDLK_RIGHT && i == 6) is_mapped = true;
+                        if (event.key.keysym.sym == SDLK_SPACE && i == 5) is_mapped = true;
+                        
+                        if(is_mapped) {
+                            chip8.key[i] = 0;
+                            ui.setVirtualKeyPressed(i, false);
+                        }
+                    }
+                }
+            }
+
             if(restart_requested){
-                std::cout << "[System] Restarting game: " << current_rom_path << std::endl;
                 chip8.reset();
                 if(is_loading_state) chip8.load_state(rom_to_load);
                 else chip8.load_rom(current_rom_path);
@@ -516,8 +643,6 @@ int main(int argc, char** argv){
                     
                     chip8.emulate_cycle();
                     
-                    // Classic CHIP-8 games end by entering an infinite jump-to-self loop.
-                    // If PC didn't advance and we aren't waiting for a key press (Fx0A), the game is over.
                     if (chip8.get_pc() == current_pc && (opcode & 0xF0FF) != 0xF00A) {
                         break;
                     }
@@ -525,29 +650,31 @@ int main(int argc, char** argv){
                 }
                 chip8.update_timers();
                 beeping = (chip8.get_sound_timer() > 0);
+                ui.setSoundActive(beeping);
             } else {
                 beeping = false;
+                ui.setSoundActive(false);
             }
 
             SDL_SetRenderTarget(renderer, crt_tex);
             draw_graphics(renderer, chip8.display);
             if(chip8.is_game_over()){
-                // Draw Game Over overlay on CRT screen
-                rcui::drawText(renderer, "- GAME OVER -", CRT_WIDTH/2 - (13*16)/2, CRT_HEIGHT/2 - 20, 4);
-                rcui::drawText(renderer, "PRESS R TO REPLAY  ESC TO MENU", CRT_WIDTH/2 - (30*8)/2, CRT_HEIGHT/2 + 30, 2);
+                drawText(renderer, "- GAME OVER -", CRT_WIDTH/2 - (13*16)/2, CRT_HEIGHT/2 - 20, 4);
+                drawText(renderer, "PRESS R TO REPLAY  ESC TO MENU", CRT_WIDTH/2 - (30*8)/2, CRT_HEIGHT/2 + 30, 2);
             }
             SDL_SetRenderTarget(renderer, nullptr);
 
-            ui.setSpeedLevel(cycles_per_frame);
             ui.beginFrame();
             ui.renderContent(crt_tex);
             ui.endFrame();
+            
+            draw_external_color_selector(renderer, ui.getComputerTheme());
+            
+            SDL_RenderPresent(renderer);
 
             chip8.draw_flag = false;
-            SDL_Delay(16); // ~60 FPS
+            SDL_Delay(16);
         }
-        
-        ui.setKeyCallback(on_virtual_key, nullptr); // reset to nullptr for menu
         
         if(argc >= 2) {
             app_running = false;

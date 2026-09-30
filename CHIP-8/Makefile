@@ -1,7 +1,7 @@
-﻿CXX = g++
+CXX = g++
 CXXFLAGS = -std=c++17 -Wall -Wextra -O2
 TARGET = chip8.exe
-SOURCES = src/main.cpp src/chip8.cpp src/retro_computer.cpp
+SOURCES = src/main.cpp src/chip8.cpp src/retro_computer_ui.cpp src/retro_theme.cpp src/virtual_key.cpp src/waveform.cpp
 OBJECTS = $(SOURCES:.cpp=.o)
 
 all: $(TARGET)
